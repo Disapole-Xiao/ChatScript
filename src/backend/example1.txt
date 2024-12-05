@@ -1,0 +1,40 @@
+PROC welcomeProc
+    INIT
+        SPEAK $name "您好"
+        SPEAK "请问有什么可以帮您?"
+        GOTO menuProc
+PROC menuProc
+    HEAR /怎么.*充话费/ 
+        SPEAK "打开移动通信营业厅，选择“话费充值”"
+        GOTO menuProc
+    HEAR "账单"
+        GOTO billProc
+    HEAR "投诉"
+        GOTO complainProc
+    SILENCE 10
+        SPEAK "亲，你还在吗？"
+    SILENCE 20
+        GOTO exitProc
+    DEFAULT
+        SPEAK "亲，我听不太懂呢"
+        GOTO menuProc
+PROC billProc
+    INIT
+        SPEAK "您的本月账单是" $amount
+        GOTO menuProc
+PROC complainProc
+    INIT
+        SPEAK "亲，有任何问题都可以反馈哦"
+    HEAR /.*/
+        SPEAK "您的反馈已收到，我们会尽快处理，谢谢"
+        GOTO menuProc
+    SILENCE 10
+        SPEAK "亲，你还在吗？"
+    SILENCE 20
+        GOTO exitProc
+    DEFAULT
+        GOTO menuProc
+PROC exitProc
+    INIT
+        SPEAK "感谢您的使用，再见"
+        EXIT
