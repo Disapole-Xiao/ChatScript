@@ -1,0 +1,29 @@
+{
+    "tasks": [
+        {
+            "type": "typescript",
+            "tsconfig": "src/backend/tsconfig.json",
+            "problemMatcher": [
+                "$tsc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "label": "tsc: 构建 - src/backend/tsconfig.json"
+        },
+        {
+            "type": "shell",
+            "command": "ts-node",
+            "args": [
+                "${file}"
+            ],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "label": "ts-node: file",
+            "problemMatcher": []
+        }
+    ]
+}
