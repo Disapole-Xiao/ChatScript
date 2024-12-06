@@ -1,4 +1,5 @@
 {
+    "version": "2.0.0",
     "tasks": [
         {
             "type": "typescript",
@@ -23,7 +24,11 @@
                 "isDefault": true
             },
             "label": "ts-node: file",
-            "problemMatcher": []
-        }
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${fileDirname}",
+            },
+            
+        },
     ]
 }

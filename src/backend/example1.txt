@@ -13,14 +13,14 @@ PROC menuProc
         GOTO complainProc
     SILENCE 10
         SPEAK "亲，你还在吗？"
-    SILENCE 20
+    SILENCE 2000
         GOTO exitProc
     DEFAULT
         SPEAK "亲，我听不太懂呢"
         GOTO menuProc
 PROC billProc
     INIT
-        SPEAK "您的本月账单是" $amount
+        SPEAK "您的本月账单是" $balance
         GOTO menuProc
 PROC complainProc
     INIT

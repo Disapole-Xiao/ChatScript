@@ -2,8 +2,8 @@ import { Script, Procedure, Action, ProcEvent, ProcId, Token } from './type';
 import { ParseError } from './error';
 
 type ParseRet = {
-  script?: Script | null;
-  errors?: ParseError[];
+  script?: Script;
+  errors: ParseError[];
 };
 
 export default function parse(script: string): ParseRet {
@@ -25,9 +25,10 @@ export default function parse(script: string): ParseRet {
   if (errors.length === 0)
     return {
       script: {
-        procs: procs,
         entryProcId: entryProcId!,
+        procs: procs,
       },
+      errors: []
     };
   else
     return {
@@ -97,12 +98,8 @@ export default function parse(script: string): ParseRet {
       throw new ParseError(lineIdx, `重复定义的 Procedure: ${procId}`);
     }
     const newProc: Procedure = {
-      line: lineIdx,
+      lineIdx: lineIdx,
       id: procId,
-      initEvent: undefined,
-      hearEvents: [],
-      defaultEvent: undefined,
-      silenceEvents: [],
     };
     if (procs.size === 0) entryProcId = procId;
     procs.set(procId, newProc);
@@ -116,7 +113,7 @@ export default function parse(script: string): ParseRet {
       if (curProc) {
         if (curProc.initEvent) throw new ParseError(lineIdx, '重复定义的 initEvent');
         curEvent = curProc.initEvent = {
-          line: lineIdx,
+          lineIdx: lineIdx,
           type: 'initEvent',
           actions: [],
           hasExitOrGoto: false,
@@ -148,12 +145,13 @@ export default function parse(script: string): ParseRet {
       }
       if (curProc) {
         const newEvent: ProcEvent = {
-          line: lineIdx,
+          lineIdx: lineIdx,
           type: 'hearEvent',
-          input: input,
+          pattern: input,
           actions: [],
           hasExitOrGoto: false,
         };
+        if (!curProc.hearEvents) curProc.hearEvents = [];
         curProc.hearEvents.push(newEvent);
         curEvent = newEvent;
       } else {
@@ -172,7 +170,7 @@ export default function parse(script: string): ParseRet {
         if (curProc.defaultEvent)
           throw new ParseError(lineIdx, '重复定义的 defaultEvent');
         curEvent = curProc.defaultEvent = {
-          line: lineIdx,
+          lineIdx: lineIdx,
           type: 'defaultEvent',
           actions: [],
           hasExitOrGoto: false,
@@ -195,12 +193,13 @@ export default function parse(script: string): ParseRet {
       }
       if (curProc) {
         const newEvent: ProcEvent = {
-          line: lineIdx,
+          lineIdx: lineIdx,
           type: 'silenceEvent',
-          time: parseInt(result[1]),
+          timeout: parseInt(result[1]),
           actions: [],
           hasExitOrGoto: false,
         };
+        if (!curProc.silenceEvents) curProc.silenceEvents = [];
         curProc.silenceEvents.push(newEvent);
         curEvent = newEvent;
       } else {
@@ -255,7 +254,7 @@ export default function parse(script: string): ParseRet {
       }
     }
     addActionToCurEvent({
-      line: lineIdx,
+      lineIdx: lineIdx,
       type: 'speakAction',
       tokens: tokens,
     });
@@ -269,7 +268,7 @@ export default function parse(script: string): ParseRet {
     }
     const procId = result[0];
     addActionToCurEvent({
-      line: lineIdx,
+      lineIdx: lineIdx,
       type: 'gotoAction',
       procId: procId,
     });
@@ -280,7 +279,7 @@ export default function parse(script: string): ParseRet {
   function processExit(arg: string): void {
     if (arg !== '') throw new ParseError(lineIdx, 'exit 后有多余字符');
     addActionToCurEvent({
-      line: lineIdx,
+      lineIdx: lineIdx,
       type: 'exitAction',
     });
     curEvent!.hasExitOrGoto = true; // 标记当前 event 有结束语句
@@ -291,34 +290,34 @@ export default function parse(script: string): ParseRet {
    */
   function checkProc(proc: Procedure) {
     // 如果没有定义 hear，必须定义 init，且 init 能退出
-    if (!proc.hearEvents.length) {
+    if (!proc.hearEvents) {
       if (!proc.initEvent) {
-        errors.push(new ParseError(proc.line, 'Procedure 未定义 init'));
+        errors.push(new ParseError(proc.lineIdx, 'Procedure 未定义 init'));
         return;
       }
       if (!proc.initEvent.hasExitOrGoto)
-        errors.push(new ParseError(proc.initEvent.line, '未定义 exit 或 goto'));
+        errors.push(new ParseError(proc.initEvent.lineIdx, '未定义 exit 或 goto'));
     } else {
       // 如果定义了 hear，每个 hear 必须能结束
       for (let hearEvent of proc.hearEvents) {
         if (!hearEvent.hasExitOrGoto)
-          errors.push(new ParseError(hearEvent.line, '未定义 exit 或 goto'));
+          errors.push(new ParseError(hearEvent.lineIdx, '未定义 exit 或 goto'));
       }
       // 必须定义 default 和 silence
       if (!proc.defaultEvent || !proc.silenceEvents) {
         errors.push(
-          new ParseError(proc.hearEvents[0].line, 'hear 但没有对应的 default 或 silence')
+          new ParseError(proc.hearEvents[0].lineIdx, 'hear 没有对应的 default 或 silence')
         );
         return;
       }
       // default 必须能结束
       if (!proc.defaultEvent!.hasExitOrGoto)
-        errors.push(new ParseError(proc.defaultEvent!.line, '未定义 exit 或 goto'));
+        errors.push(new ParseError(proc.defaultEvent!.lineIdx, '未定义 exit 或 goto'));
       // silence 中至少有一个能结束
       if (proc.silenceEvents.every(e => !e.hasExitOrGoto))
         errors.push(
           new ParseError(
-            proc.silenceEvents[0].line,
+            proc.silenceEvents[0].lineIdx,
             '至少有一个 silence 要定义 exit 或 goto'
           )
         );

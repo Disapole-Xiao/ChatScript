@@ -1,44 +1,44 @@
 export type ProcId = string;
 
 export type Script = {
-  procs: Map<ProcId, Procedure>;
   entryProcId: ProcId;
+  procs: Map<ProcId, Procedure>;
 };
 
 export type Procedure = {
-  line: number;
+  lineIdx: number;
   id: ProcId;
   initEvent?: InitEvent;
-  hearEvents: HearEvent[];
+  hearEvents?: HearEvent[];
   defaultEvent?: DefaultEvent;
-  silenceEvents: SilenceEvent[];
+  silenceEvents?: SilenceEvent[];
 };
 
 export type ProcEvent = InitEvent | HearEvent | SilenceEvent | DefaultEvent;
 type EventCommon = {
-  line: number;
+  lineIdx: number;
   type: string;
   actions: Action[];
   hasExitOrGoto: boolean; // 该事件是否会终止或转移
 };
 type InitEvent = { type: 'initEvent' } & EventCommon;
-type HearEvent = { type: 'hearEvent'; input: string | RegExp } & EventCommon;
+type HearEvent = { type: 'hearEvent'; pattern: string | RegExp } & EventCommon;
 type DefaultEvent = { type: 'defaultEvent' } & EventCommon;
-type SilenceEvent = { type: 'silenceEvent'; time: number } & EventCommon;
+type SilenceEvent = { type: 'silenceEvent'; timeout: number } & EventCommon;
 
 export type Action = SpeakAction | GotoAction | ExitAction;
 type SpeakAction = {
-  line: number;
+  lineIdx: number;
   type: 'speakAction';
   tokens: Token[];
 };
 type GotoAction = {
-  line: number;
+  lineIdx: number;
   type: 'gotoAction';
   procId: ProcId;
 };
 type ExitAction = {
-  line: number;
+  lineIdx: number;
   type: 'exitAction';
 };
 
@@ -46,9 +46,3 @@ export type Token = {
   type: 'string' | 'variable';
   content: string; // 内容为字符串或者变量名
 };
-
-export interface Runtime {
-  userId: string;
-  variables: Map<string, any>; // TODO
-  curProc: Procedure;
-}

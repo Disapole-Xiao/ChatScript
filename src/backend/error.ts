@@ -1,9 +1,8 @@
-export class ParseError extends Error {
+export class ParseError {
   line: number;
   message: string;
   name: string = 'ParseError';
   constructor(line: number, message: string) {
-    super(message);
     this.line = line;
     this.message = message;
   }
@@ -19,12 +18,11 @@ export class ParseError extends Error {
   }
 }
 
-export class RuntimeError extends Error {
+export class RuntimeError {
   line: number;
   message: string;
   name: string = 'RuntimeError';
   constructor(line: number, message: string) {
-    super(message);
     this.line = line;
     this.message = message;
   }
