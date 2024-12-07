@@ -1,0 +1,17 @@
+{
+  "name": "dsl-intepreter-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "jest"
+  },
+  "dependencies": {
+	"ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/ws": "^8.5.13",
+    "jest": "^29.7.0",
+    "typescript": "^5"
+  }
+}
