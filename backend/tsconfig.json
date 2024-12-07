@@ -108,5 +108,5 @@
     // "skipDefaultLibCheck": true,                      /* Skip type checking .d.ts files that are included with TypeScript. */
     // "skipLibCheck": true                                 /* Skip type checking all .d.ts files. */
   },
-  "include": ["server.ts", "parse.ts", "error.ts", "type.ts"]
+  "include": ["src/server.ts", "src/parse.ts", "error.ts", "src/type.ts", "src/Interpreter.ts", "src/client.ts"]
 }

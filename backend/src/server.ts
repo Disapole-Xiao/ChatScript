@@ -2,10 +2,10 @@ import * as fs from 'fs';
 import parse from './parse';
 import { ParseError } from './error';
 import WebSocket from 'ws';
-import { Interpreter, Config } from './interpreter';
-import { users } from './userData';
+import { Interpreter, Config } from './Interpreter';
+import { users } from '../userData';
 
-const scriptPath = process.argv[2] || './src/backend/example1.txt';
+const scriptPath = process.argv[2] || './example1.txt';
 
 const text = fs.readFileSync(scriptPath, 'utf8');
 

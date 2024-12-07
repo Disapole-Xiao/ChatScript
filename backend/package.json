@@ -3,15 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "start": "ts-node src/server.ts",
+    "client": "ts-node src/client.ts u1"
   },
   "dependencies": {
-	"ws": "^8.18.0"
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/ws": "^8.5.13",
     "jest": "^29.7.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   }
 }
