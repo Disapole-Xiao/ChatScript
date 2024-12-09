@@ -1,4 +1,5 @@
-PROC welcomeProc
+export const exampleTexts = [
+`PROC welcomeProc
     INIT
         SPEAK $name "您好"
         SPEAK "请问有什么可以帮您?"
@@ -38,3 +39,20 @@ PROC exitProc
     INIT
         SPEAK "感谢您的使用，再见"
         EXIT
+`,
+
+`proc main
+        init
+          speak "init"
+        hear "something"
+          speak "hear"
+          exit
+        default
+          speak "default"
+          exit
+        silence 5
+          speak "silence"
+          exit
+      exit
+`,
+]

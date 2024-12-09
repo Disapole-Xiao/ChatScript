@@ -21,25 +21,25 @@ type EventCommon = {
   actions: Action[];
   hasExitOrGoto: boolean; // 该事件是否会终止或转移
 };
-type InitEvent = { type: 'initEvent' } & EventCommon;
-type HearEvent = { type: 'hearEvent'; pattern: string | RegExp } & EventCommon;
-type DefaultEvent = { type: 'defaultEvent' } & EventCommon;
-type SilenceEvent = { type: 'silenceEvent'; timeout: number } & EventCommon;
+type InitEvent = { type: 'InitEvent' } & EventCommon;
+type HearEvent = { type: 'HearEvent'; pattern: string | RegExp } & EventCommon;
+type DefaultEvent = { type: 'DefaultEvent' } & EventCommon;
+type SilenceEvent = { type: 'SilenceEvent'; timeout: number } & EventCommon;
 
 export type Action = SpeakAction | GotoAction | ExitAction;
 type SpeakAction = {
   lineIdx: number;
-  type: 'speakAction';
+  type: 'SpeakAction';
   tokens: Token[];
 };
 type GotoAction = {
   lineIdx: number;
-  type: 'gotoAction';
+  type: 'GotoAction';
   procId: ProcId;
 };
 type ExitAction = {
   lineIdx: number;
-  type: 'exitAction';
+  type: 'ExitAction';
 };
 
 export type Token = {

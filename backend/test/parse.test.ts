@@ -1,0 +1,483 @@
+import { parse } from '../src/parse';
+import { Script } from '../src/type';
+import { ParseError } from '../src/error';
+
+
+
+test('ignore comment', () => {
+  const text = `# some comment
+    proc main
+      init
+        #speak "Hello, world"
+        exit`;
+  const result = parse(text);
+  expect(result.procs.size).toBe(1);
+  expect(result.entryProcId).toBe('main');
+  expect(result.procs.get('main')).toEqual({
+    lineIdx: 2,
+    id: 'main',
+    initEvent: {
+      type: 'InitEvent',
+      lineIdx: 3,
+      actions: [{ lineIdx: 5, type: 'ExitAction' }],
+      hasExitOrGoto: true,
+    },
+  });
+});
+
+test('empty text', () => {
+  const f = () => parse('');
+  expect(f).toThrow(new ParseError(1, 'No Procedure in script'));
+});
+
+test('unknown keyword', () => {
+  const text = `proc main
+    init
+      exit
+    wait 5`;
+  const f = () => parse(text);
+  expect(f).toThrow(new ParseError(4, 'Unknown keyword "wait"'));
+});
+describe('No Procedure Defined Yet', () => {
+  test('no procedure defined yet at INIT', () => {
+    const text = `init
+      exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(1, 'No Procedure defined yet'));
+  });
+
+  test('no procedure defined yet at HEAR', () => {
+    const text = `hear "balance"
+      exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(1, 'No Procedure defined yet'));
+  });
+
+  test('no procedure defined yet at DEFAULT', () => {
+    const text = `default
+      exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(1, 'No Procedure defined yet'));
+  });
+
+  test('no procedure defined yet at SILENCE', () => {
+    const text = `silence 5
+      exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(1, 'No Procedure defined yet'));
+  });
+});
+
+describe('No Event Defined Yet', () => {
+  test('first procedure no event defined yet', () => {
+    const text = `proc main
+      speak "hi"
+      exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(2, 'No Event defined yet'));
+  });
+  test('following procedure no event defined yet', () => {
+    const text = `proc main
+      init
+        exit
+    proc next
+      exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(5, 'No Event defined yet'));
+  });
+});
+
+describe('Duplicate Definition', () => {
+  test('duplicate definition of procedure', () => {
+    const text = `proc main
+    init
+      speak "Hello, world"
+      exit
+  proc main`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(5, 'Duplicate definition of Procedure "main"'));
+  });
+  test('duplicate definition of InitEvent', () => {
+    const text = `proc main
+    init
+      exit
+    init
+      exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(5, 'Duplicate definition of InitEvent'));
+  });
+  test('duplicate definition of DefaultEvent', () => {
+    const text = `proc main
+    init
+      exit
+    default
+      exit
+    default
+      exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(7, 'Duplicate definition of DefaultEvent'));
+  });
+});
+
+test('undefined Procedure in goto statement', () => {
+  const text = `proc main
+    init
+      goto unknownProcedure`;
+  const f = () => parse(text);
+  expect(f).toThrow(new ParseError(2, 'Procedure "unknownProcedure" is not defined'));
+});
+
+describe('Can Exit or Goto', () => {
+  test('missing ExitAction or GotoAction in InitEvent', () => {
+    const text = `proc main
+      init
+        speak "hi"`;
+    const f = () => parse(text);
+    expect(f).toThrow(
+      new ParseError(2, 'InitEvent has not defined ExitAction or GotoAction')
+    );
+  });
+  test('missing ExitAction or GotoAction in HearEvent', () => {
+    const text = `proc main
+      init
+        exit
+      hear "hi"
+        speak "hear"
+      default
+        exit
+      silence 5
+        exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(
+      new ParseError(4, 'HearEvent has not defined ExitAction or GotoAction')
+    );
+  });
+  test('missing ExitAction or GotoAction in DefaultEvent', () => {
+    const text = `proc main
+      init
+        exit
+      hear "hi"
+        exit
+      default
+        speak "default"
+      silence 5
+        exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(
+      new ParseError(6, 'DefaultEvent has not defined ExitAction or GotoAction')
+    );
+  });
+
+  test('missing ExitAction or GotoAction in multiple SilenceEvent', () => {
+    const text = `proc main
+      init
+        exit
+      hear "hi"
+        exit
+      default
+        exit
+      silence 5
+        speak "1"
+      silence 10
+        speak "2"`;
+    const f = () => parse(text);
+    expect(f).toThrow(
+      new ParseError(8, 'At least one SilenceEvent must define ExitAction or GotoAction')
+    );
+  });
+
+  test('GotoAction in multiple SilenceEvent', () => {
+    const text = `proc main
+    init
+      exit
+    hear "hi"
+      exit
+    default
+      exit
+    silence 5
+      speak "1"
+    silence 10
+      goto main
+    silence 20
+      speak "3"`;
+    const result = parse(text);
+    expect(result.procs.size).toBe(1);
+    const proc = result.procs.get('main');
+    expect(proc?.initEvent).toBeDefined();
+    expect(proc?.hearEvents).toHaveLength(1);
+    expect(proc?.defaultEvent).toBeDefined();
+    expect(proc?.silenceEvents).toHaveLength(3);
+  });
+});
+
+describe('Procedure Structure', () => {
+  test('missing InitEvent in Procedure with HearEvent', () => {
+    const text = `proc main
+      hear "hi"
+        exit
+      default
+        exit
+      silence 5
+        exit`;
+    const result = parse(text);
+    expect(result.procs.size).toBe(1);
+    const proc = result.procs.get('main');
+    expect(proc?.initEvent).toBeUndefined();
+    expect(proc?.hearEvents).toHaveLength(1);
+    expect(proc?.defaultEvent).toBeDefined();
+    expect(proc?.silenceEvents).toHaveLength(1);
+  });
+
+  test('missing InitEvent in Procedure without HearEvent', () => {
+    const text = `proc main
+      default
+        exit`; // 没有hear，default多余
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(1, 'Procedure "main" has not defined InitEvent'));
+  });
+
+  test('HearEvent with DefaultEvent and SilenceEvent defined', () => {
+    const text = `proc main
+      init
+        exit
+      hear "something"
+        exit
+      default
+        exit
+      silence 5
+        exit`;
+    const result = parse(text);
+    expect(result.procs.size).toBe(1);
+    const proc = result.procs.get('main');
+    expect(proc?.hearEvents).toHaveLength(1);
+    expect(proc?.defaultEvent).toBeDefined();
+    expect(proc?.silenceEvents).toHaveLength(1);
+  });
+
+  test('missing DefaultEvent when HearEvent is defined', () => {
+    const text = `proc main
+      init
+        exit
+      hear "something"
+        exit
+      silence 5
+        exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(
+      new ParseError(
+        4,
+        'HearEvent does not have a corresponding DefaultEvent or SilenceEvent'
+      )
+    );
+  });
+
+  test('missing SilenceEvent when HearEvent is defined', () => {
+    const text = `proc main
+      init
+        exit
+      hear "something"
+        exit
+      default
+        exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(
+      new ParseError(
+        4,
+        'HearEvent does not have a corresponding DefaultEvent or SilenceEvent'
+      )
+    );
+  });
+});
+
+test('unclosed string', () => {
+  const text = `proc main
+    init
+      speak "Hello
+    exit`;
+  const f = () => parse(text);
+  expect(f).toThrow(new ParseError(3, 'Unclosed string'));
+});
+describe('Variable', () => {
+  test('speak with variable', () => {
+    const text = `proc main
+    init
+      speak "Hello," $surname $sex
+      exit`;
+    const result = parse(text);
+    expect(result.procs.size).toBe(1);
+    const proc = result.procs.get('main');
+    expect(proc?.initEvent?.actions).toHaveLength(2);
+    const action = proc?.initEvent?.actions[0];
+    expect(action).toEqual({
+      lineIdx: 3,
+      type: 'SpeakAction',
+      tokens: [
+        { type: 'string', content: 'Hello,' },
+        { type: 'variable', content: 'surname' },
+        { type: 'variable', content: 'sex' },
+      ],
+    });
+  });
+
+  test('variable name with illegal characters', () => {
+    const text = `proc main
+    init
+      speak "Hello," $us@er
+    exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(
+      new ParseError(
+        3,
+        'Invalid variable name'
+      )
+    );
+  });
+  test('variable name with digit at the beginning', () => {
+    const text = `proc main
+    init
+      speak "Hello," $1u
+    exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(
+      new ParseError(
+        3,
+        'Invalid variable name'
+      )
+    );
+  });
+});
+
+describe('Incorrect Statement Syntax', () => {
+  test('incorrect parameter in PROC statement', () => {
+    const text = `proc main extra`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(1, 'Incorrect parameter for PROC statement'));
+  });
+
+  test('extra arguments in INIT statement', () => {
+    const text = `proc main
+    init extra
+      exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(2, 'Extra characters after INIT statement'));
+  });
+
+  test('incorrect parameter in HEAR statement', () => {
+    const text = `proc main
+      hear 12345
+        exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(2, 'Incorrect parameter for HEAR statement'));
+  });
+
+  test('extra arguments in DEFAULT statement', () => {
+    const text = `proc main
+        init
+          exit
+        default extra
+          exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(4, 'Extra characters after DEFAULT statement'));
+  });
+
+  test('incorrect parameter for SILENCE statement', () => {
+    const text = `proc main
+      init
+        exit
+      silence "5"
+        exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(4, 'Incorrect parameter for SILENCE statement'));
+  });
+
+  test('incorrect parameter for SPEAK statement', () => {
+    const text = `proc main
+      init
+        speak 12345
+        exit`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(3, 'Incorrect parameter for SPEAK statement'));
+  });
+
+  test('missing arguments in GOTO statement', () => {
+    const text = `proc main
+      init
+        goto`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(3, 'Incorrect parameter for GOTO statement'));
+  });
+
+  test('extra arguments in EXIT statement', () => {
+    const text = `proc main
+    init
+      exit extra`;
+    const f = () => parse(text);
+    expect(f).toThrow(new ParseError(3, 'Extra characters after EXIT statement'));
+  });
+});
+
+test('hear regex', () => {
+  const text = `proc main
+    hear /^[0-9]+$/
+      exit
+    default
+      exit
+    silence 5
+      exit`;
+  const result = parse(text);
+  expect(result.procs.size).toBe(1);
+  const proc = result.procs.get('main');
+  expect(proc?.hearEvents).toHaveLength(1);
+  expect(proc?.defaultEvent).toBeDefined();
+  expect(proc?.silenceEvents).toHaveLength(1);
+  if (proc?.hearEvents) expect(proc.hearEvents[0].pattern).toEqual(/^[0-9]+$/);
+  else fail();
+});
+
+test('hear neither a string nor regex', () => {
+  const text = `
+    proc main
+      hear 12345
+        exit
+  `;
+  const f = () => parse(text);
+  expect(f).toThrow(new ParseError(3, 'Incorrect parameter for HEAR statement'));
+});
+describe('Full Scripts', ()=>{test('simple text with one procedure', () => {
+  const text = `proc main
+    init
+      speak "Hello, world"
+      exit`;
+  const result = parse(text);
+  const expectedScript: Script = {
+    entryProcId: 'main',
+    procs: new Map(
+      Object.entries({
+        main: {
+          lineIdx: 1,
+          id: 'main',
+          initEvent: {
+            lineIdx: 2,
+            type: 'InitEvent',
+            actions: [
+              {
+                lineIdx: 3,
+                type: 'SpeakAction',
+                tokens: [{ type: 'string', content: 'Hello, world' }],
+              },
+              {
+                lineIdx: 4,
+                type: 'ExitAction',
+              },
+            ],
+            hasExitOrGoto: true,
+          },
+        },
+      })
+    ),
+  };
+  expect(result).toEqual(expectedScript);
+});
+
+
+});

@@ -7,7 +7,7 @@ export class ParseError {
     this.message = message;
   }
   toString(): string {
-    return `${this.name}: ${this.message} at line ${this.line}`;
+    return `${this.name}: line ${this.line}: ${this.message}`;
   }
   toJSON() {
     return {
@@ -27,6 +27,6 @@ export class RuntimeError {
     this.message = message;
   }
   toString(): string {
-    return `${this.name}: ${this.message} at line ${this.line}`;
+    return `${this.name}: line ${this.line}: ${this.message}`;
   }
 }

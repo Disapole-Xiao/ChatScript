@@ -1,1 +1,0 @@
-console.error(new Error('test'))

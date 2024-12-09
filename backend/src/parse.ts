@@ -1,19 +1,17 @@
 import { Script, Procedure, Action, ProcEvent, ProcId, Token } from './type';
 import { ParseError } from './error';
+import {exampleTexts} from '../examples';
+const exampleText = exampleTexts[0];
+console.log(parse(exampleText));
+console.log('finish');
 
-type ParseRet = {
-  script?: Script;
-  errors: ParseError[];
-};
-
-export default function parse(script: string): ParseRet {
+export function parse(script: string): Script {
   let lineIdx: number = 0,
     procs: Map<ProcId, Procedure> = new Map(), // 所有proc
     entryProcId: ProcId | null = null,
     curProc: Procedure | null = null, // 当前 proc
     curEvent: ProcEvent | null = null, // 当前 Event
-    referedProcIds: { line: number; procId: ProcId }[] = [], // 记录下被引用的 Proc，检查是否存在
-    errors: ParseError[] = [];
+    referedProcIds: { line: number; procId: ProcId }[] = []; // 记录下被引用的 Proc，检查是否存在
 
   // 删除前后空白符
   let lines = script.split('\n').map(line => line.trim());
@@ -21,19 +19,11 @@ export default function parse(script: string): ParseRet {
   lines.forEach(line => parseLine(line));
   // 最后检查脚本整体
   checkScript();
-  // 没有错误返回语法树，有错误只返回错误
-  if (errors.length === 0)
-    return {
-      script: {
-        entryProcId: entryProcId!,
-        procs: procs,
-      },
-      errors: []
-    };
-  else
-    return {
-      errors: errors,
-    };
+  // 返回语法树
+  return {
+    entryProcId: entryProcId!,
+    procs: procs,
+  };
 
   function parseLine(line: string): void {
     lineIdx++;
@@ -44,58 +34,50 @@ export default function parse(script: string): ParseRet {
     let [command, arg] = /(\S+)\s*(.*)/.exec(line)!.slice(1); // 从和第一个空格分成两部分
     command = command.toLowerCase();
     arg = arg.trim();
-    try {
-      switch (command) {
-        case 'proc':
-          processProc(arg);
-          break;
-        case 'init':
-          processInit(arg);
-          break;
-        case 'hear':
-          processHear(arg);
-          break;
-        case 'default':
-          processDefault(arg);
-          break;
-        case 'silence':
-          processSilence(arg);
-          break;
-        case 'speak':
-          processSpeak(arg);
-          break;
-        case 'goto':
-          processGoto(arg);
-          break;
-        case 'exit':
-          processExit(arg);
-          break;
-        default:
-          throw new ParseError(lineIdx, `未知语句: ${command}`);
-      }
-    } catch (e) {
-      if (e instanceof ParseError) {
-        errors.push(e);
-        return;
-      }
-      console.error(e);
+    switch (command) {
+      case 'proc':
+        processProc(arg);
+        break;
+      case 'init':
+        processInit(arg);
+        break;
+      case 'hear':
+        processHear(arg);
+        break;
+      case 'default':
+        processDefault(arg);
+        break;
+      case 'silence':
+        processSilence(arg);
+        break;
+      case 'speak':
+        processSpeak(arg);
+        break;
+      case 'goto':
+        processGoto(arg);
+        break;
+      case 'exit':
+        processExit(arg);
+        break;
+      default:
+        throw new ParseError(lineIdx, `Unknown keyword "${command}"`);
     }
   }
 
   function addActionToCurEvent(action: Action): void {
-    if (!curEvent) throw new ParseError(lineIdx, '还没有定义 Event');
+    if (!curEvent) throw new ParseError(action.lineIdx, 'No Event defined yet');
     curEvent.actions.push(action);
   }
 
   function processProc(arg: string): void {
-    const pattern = /^(\S+)$/;
+    const pattern = /^([a-zA-Z_]\w*)$/; // 字母或下划线开头，数字字母下划线构成
     const result = pattern.exec(arg);
     if (!result) {
-      throw new ParseError(lineIdx, 'proc 语句格式不正确');
+      throw new ParseError(lineIdx, 'Incorrect parameter for PROC statement');
     }
     const procId = result[1];
     if (procs.get(procId)) {
-      throw new ParseError(lineIdx, `重复定义的 Procedure: ${procId}`);
+      throw new ParseError(lineIdx, `Duplicate definition of Procedure "${procId}"`);
     }
     const newProc: Procedure = {
       lineIdx: lineIdx,
@@ -108,106 +90,89 @@ export default function parse(script: string): ParseRet {
   }
 
   function processInit(arg: string) {
-    try {
-      if (arg !== '') throw new ParseError(lineIdx, 'init 后有多余字符');
-      if (curProc) {
-        if (curProc.initEvent) throw new ParseError(lineIdx, '重复定义的 initEvent');
-        curEvent = curProc.initEvent = {
-          lineIdx: lineIdx,
-          type: 'initEvent',
-          actions: [],
-          hasExitOrGoto: false,
-        };
-      } else throw new ParseError(lineIdx, '还没有定义 Procedure');
-    } catch (e) {
-      curEvent = null;
-      throw e;
-    }
+    if (arg !== '')
+      throw new ParseError(lineIdx, 'Extra characters after INIT statement');
+    if (curProc) {
+      if (curProc.initEvent)
+        throw new ParseError(lineIdx, 'Duplicate definition of InitEvent');
+      curEvent = curProc.initEvent = {
+        lineIdx: lineIdx,
+        type: 'InitEvent',
+        actions: [],
+        hasExitOrGoto: false,
+      };
+    } else throw new ParseError(lineIdx, 'No Procedure defined yet');
   }
   function processHear(arg: string): void {
-    try {
-      const regexPattern = /^\/(.*?)\/$/; // 匹配正则表达式或字符串
-      const stringPattern = /^"(.*?)"$/;
-      let result = regexPattern.exec(arg);
-      let input: string | RegExp;
+    const regexPattern = /^\/(.*?)\/$/; // 匹配正则表达式或字符串
+    const stringPattern = /^"(.*?)"$/;
+    let result = regexPattern.exec(arg);
+    let input: string | RegExp;
+    if (result) {
+      // 匹配上正则表达式
+      input = RegExp(result[1]);
+    } else {
+      result = stringPattern.exec(arg);
       if (result) {
-        // 匹配上正则表达式
-        input = RegExp(result[1]);
+        // 匹配上字符串
+        input = result[1];
       } else {
-        result = stringPattern.exec(arg);
-        if (result) {
-          // 匹配上字符串
-          input = result[1];
-        } else {
-          // 都匹配不上
-          throw new ParseError(lineIdx, 'hear 语句参数不正确');
-        }
+        // 都匹配不上
+        throw new ParseError(lineIdx, 'Incorrect parameter for HEAR statement');
       }
-      if (curProc) {
-        const newEvent: ProcEvent = {
-          lineIdx: lineIdx,
-          type: 'hearEvent',
-          pattern: input,
-          actions: [],
-          hasExitOrGoto: false,
-        };
-        if (!curProc.hearEvents) curProc.hearEvents = [];
-        curProc.hearEvents.push(newEvent);
-        curEvent = newEvent;
-      } else {
-        throw new ParseError(lineIdx, '还没有定义 Procedure');
-      }
-    } catch (e) {
-      curEvent = null;
-      throw e;
+    }
+    if (curProc) {
+      const newEvent: ProcEvent = {
+        lineIdx: lineIdx,
+        type: 'HearEvent',
+        pattern: input,
+        actions: [],
+        hasExitOrGoto: false,
+      };
+      if (!curProc.hearEvents) curProc.hearEvents = [];
+      curProc.hearEvents.push(newEvent);
+      curEvent = newEvent;
+    } else {
+      throw new ParseError(lineIdx, 'No Procedure defined yet');
     }
   }
 
   function processDefault(arg: string): void {
-    try {
-      if (arg !== '') throw new ParseError(lineIdx, 'default 后有多余字符');
-      if (curProc) {
-        if (curProc.defaultEvent)
-          throw new ParseError(lineIdx, '重复定义的 defaultEvent');
-        curEvent = curProc.defaultEvent = {
-          lineIdx: lineIdx,
-          type: 'defaultEvent',
-          actions: [],
-          hasExitOrGoto: false,
-        };
-      } else {
-        throw new ParseError(lineIdx, '还没有定义 Procedure');
-      }
-    } catch (e) {
-      curEvent = null;
-      throw e;
+    if (arg !== '')
+      throw new ParseError(lineIdx, 'Extra characters after DEFAULT statement');
+    if (curProc) {
+      if (curProc.defaultEvent)
+        throw new ParseError(lineIdx, 'Duplicate definition of DefaultEvent');
+      curEvent = curProc.defaultEvent = {
+        lineIdx: lineIdx,
+        type: 'DefaultEvent',
+        actions: [],
+        hasExitOrGoto: false,
+      };
+    } else {
+      throw new ParseError(lineIdx, 'No Procedure defined yet');
     }
   }
 
   function processSilence(arg: string): void {
-    try {
-      const pattern = /^(\d+)$/;
-      const result = pattern.exec(arg);
-      if (!result) {
-        throw new ParseError(lineIdx, 'silence 语句参数不正确');
-      }
-      if (curProc) {
-        const newEvent: ProcEvent = {
-          lineIdx: lineIdx,
-          type: 'silenceEvent',
-          timeout: parseInt(result[1]),
-          actions: [],
-          hasExitOrGoto: false,
-        };
-        if (!curProc.silenceEvents) curProc.silenceEvents = [];
-        curProc.silenceEvents.push(newEvent);
-        curEvent = newEvent;
-      } else {
-        throw new ParseError(lineIdx, '还没有定义 Procedure');
-      }
-    } catch (e) {
-      curEvent = null;
-      throw e;
+    const pattern = /^(\d+)$/;
+    const result = pattern.exec(arg);
+    if (!result) {
+      throw new ParseError(lineIdx, 'Incorrect parameter for SILENCE statement');
+    }
+    if (curProc) {
+      const newEvent: ProcEvent = {
+        lineIdx: lineIdx,
+        type: 'SilenceEvent',
+        timeout: parseInt(result[1]),
+        actions: [],
+        hasExitOrGoto: false,
+      };
+      if (!curProc.silenceEvents) curProc.silenceEvents = [];
+      curProc.silenceEvents.push(newEvent);
+      curEvent = newEvent;
+    } else {
+      throw new ParseError(lineIdx, 'No Procedure defined yet');
     }
   }
 
@@ -222,13 +187,13 @@ export default function parse(script: string): ParseRet {
           if (/\s/.test(arg[end])) start++;
           else if (arg[end] === '"') state = 'string';
           else if (arg[end] === '$') state = 'variable';
-          else throw new ParseError(lineIdx, 'speak 语句参数不正确');
+          else throw new ParseError(lineIdx, 'Incorrect parameter for SPEAK statement');
           end++;
           break;
         case 'string':
           while (arg[end] !== '"') {
             end++;
-            if (end >= arg.length) throw new ParseError(lineIdx, '未关闭的字符串');
+            if (end >= arg.length) throw new ParseError(lineIdx, 'Unclosed string');
           }
           tokens.push({
             type: 'string',
@@ -240,8 +205,8 @@ export default function parse(script: string): ParseRet {
           break;
         case 'variable':
           while (end < arg.length && arg[end] !== ' ') {
-            if (!/\w/.test(arg[end]))
-              throw new ParseError(lineIdx, '变量名只能包含字母、数字和下划线');
+            if (!/\w/.test(arg[end]) || (end === start+1 && /[0-9]/.test(arg[end])))
+              throw new ParseError(lineIdx, 'Invalid variable name');
             end++;
           }
           tokens.push({
@@ -255,7 +220,7 @@ export default function parse(script: string): ParseRet {
     }
     addActionToCurEvent({
       lineIdx: lineIdx,
-      type: 'speakAction',
+      type: 'SpeakAction',
       tokens: tokens,
     });
   }
@@ -264,12 +229,12 @@ export default function parse(script: string): ParseRet {
     const pattern = /^\S+$/;
     const result = pattern.exec(arg);
     if (!result) {
-      throw new ParseError(lineIdx, 'goto 语句参数不正确');
+      throw new ParseError(lineIdx, 'Incorrect parameter for GOTO statement');
     }
     const procId = result[0];
     addActionToCurEvent({
       lineIdx: lineIdx,
-      type: 'gotoAction',
+      type: 'GotoAction',
       procId: procId,
     });
     referedProcIds.push({ line: lineIdx, procId: procId }); // 记录引用的 procId
@@ -277,10 +242,11 @@ export default function parse(script: string): ParseRet {
   }
 
   function processExit(arg: string): void {
-    if (arg !== '') throw new ParseError(lineIdx, 'exit 后有多余字符');
+    if (arg !== '')
+      throw new ParseError(lineIdx, 'Extra characters after EXIT statement');
     addActionToCurEvent({
       lineIdx: lineIdx,
-      type: 'exitAction',
+      type: 'ExitAction',
     });
     curEvent!.hasExitOrGoto = true; // 标记当前 event 有结束语句
   }
@@ -292,44 +258,51 @@ export default function parse(script: string): ParseRet {
     // 如果没有定义 hear，必须定义 init，且 init 能退出
     if (!proc.hearEvents) {
       if (!proc.initEvent) {
-        errors.push(new ParseError(proc.lineIdx, 'Procedure 未定义 init'));
-        return;
+        throw new ParseError(
+          proc.lineIdx,
+          `Procedure "${proc.id}" has not defined InitEvent`
+        );
       }
       if (!proc.initEvent.hasExitOrGoto)
-        errors.push(new ParseError(proc.initEvent.lineIdx, '未定义 exit 或 goto'));
+        throw new ParseError(
+          proc.initEvent.lineIdx,
+          'InitEvent has not defined ExitAction or GotoAction'
+        );
     } else {
       // 如果定义了 hear，每个 hear 必须能结束
       for (let hearEvent of proc.hearEvents) {
         if (!hearEvent.hasExitOrGoto)
-          errors.push(new ParseError(hearEvent.lineIdx, '未定义 exit 或 goto'));
+          throw new ParseError(
+            hearEvent.lineIdx,
+            'HearEvent has not defined ExitAction or GotoAction'
+          );
       }
       // 必须定义 default 和 silence
       if (!proc.defaultEvent || !proc.silenceEvents) {
-        errors.push(
-          new ParseError(proc.hearEvents[0].lineIdx, 'hear 没有对应的 default 或 silence')
+        throw new ParseError(
+          proc.hearEvents[0].lineIdx,
+          'HearEvent does not have a corresponding DefaultEvent or SilenceEvent'
         );
-        return;
       }
       // default 必须能结束
       if (!proc.defaultEvent!.hasExitOrGoto)
-        errors.push(new ParseError(proc.defaultEvent!.lineIdx, '未定义 exit 或 goto'));
+        throw new ParseError(
+          proc.defaultEvent!.lineIdx,
+          'DefaultEvent has not defined ExitAction or GotoAction'
+        );
       // silence 中至少有一个能结束
       if (proc.silenceEvents.every(e => !e.hasExitOrGoto))
-        errors.push(
-          new ParseError(
-            proc.silenceEvents[0].lineIdx,
-            '至少有一个 silence 要定义 exit 或 goto'
-          )
+        throw new ParseError(
+          proc.silenceEvents[0].lineIdx,
+          'At least one SilenceEvent must define ExitAction or GotoAction'
         );
     }
   }
 
   function checkScript() {
     // 检查是否有 proc 和 entryProcId
-    if (procs.size === 0 || !entryProcId) {
-      errors.push(new ParseError(0, '没有定义 Procedure'));
-      return;
-    }
+    if (procs.size === 0 || !entryProcId)
+      throw new ParseError(1, `No Procedure in script`);
     // 检查每一个 proc 是否合法
     for (let proc of procs.values()) {
       checkProc(proc);
@@ -337,7 +310,7 @@ export default function parse(script: string): ParseRet {
     // 检查是否存在未定义的 proc
     for (let { line, procId } of referedProcIds) {
       if (!procs.get(procId))
-        errors.push(new ParseError(line, ` Procedure ${procId} 未定义`));
+        throw new ParseError(line, `Procedure "${procId}" is not defined`);
     }
   }
 }

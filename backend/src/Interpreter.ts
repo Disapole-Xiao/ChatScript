@@ -151,7 +151,7 @@ export class Interpreter implements Config {
     try {
       for (const action of actions) {
         switch (action.type) {
-          case 'speakAction':
+          case 'SpeakAction':
             console.debug('执行 speakAction');
             let message = '';
             for (const token of action.tokens) {
@@ -168,7 +168,7 @@ export class Interpreter implements Config {
             this.onSend(message); // 发送消息
             break;
 
-          case 'gotoAction':
+          case 'GotoAction':
             console.debug('执行 gotoAction')
             this.clearTimers();
             this.taskQueue = []; // 清空任务队列，不再执行当前 Proc 的后续 Event
@@ -179,7 +179,7 @@ export class Interpreter implements Config {
             setTimeout(() => this.processQueue(), 0);
             return; // 停止执行后续动作
 
-          case 'exitAction':
+          case 'ExitAction':
             console.debug('执行 exitAction');
             this.end();
             this.onExit();
