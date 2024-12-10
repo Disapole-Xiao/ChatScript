@@ -6,34 +6,9 @@ import { exampleTexts } from './examplesTexts';
 console.log(
   JSON.stringify(
     parse(
-      `proc full_proc
-    init
-        speak "a init message"
-    hear "a string"
-        speak "heard a string"
-        exit
-    hear /regex1|regex2/
-        speak "heard a regex"
-        exit
-    default
-        goto proc_without_init
-    silence 10
-        goto proc_without_hear
-proc proc_without_hear
-    init
-        speak "another init message"
-        exit
-proc proc_without_init
-    hear "another string"
-        speak "heard another string"
-        exit
-    default
-        speak "default message"
-        goto full_proc
-    silence 10
-        speak "silence message"
-    silence 20
-        goto proc_without_hear
+      `proc main 
+        init
+          goto main # error
 `
     ),
     null,
@@ -248,26 +223,3 @@ const res: Script = {
     },
   },
 };
-
-const int = new Interpreter(
-  res,
-  {
-    onSend: message => {
-      console.log(message);
-    },
-    onExit: () => {
-      console.log('--exit--');
-    },
-    onRuntimeError: error => {
-      console.error(error);
-    },
-  },
-  {},
-  'test user'
-);
-
-int.start('full_proc');
-
-process.stdin.on('data', input => {
-  int.receive(input.toString());
-});

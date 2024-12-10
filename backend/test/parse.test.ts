@@ -7,7 +7,7 @@ test('ignore comment', () => {
     proc main
       init
         #speak "Hello, world"
-        exit`;
+        exit # comment`;
   const result = parse(text);
   expect(result).toEqual({
     entryProcId: 'main',
@@ -462,7 +462,7 @@ describe('Variable', () => {
       speak "Hello," $us@er
     exit`;
     const f = () => parse(text);
-    expect(f).toThrow(new ParseError(3, 'Invalid variable name'));
+    expect(f).toThrow(new ParseError(3, 'Invalid parameter for SPEAK statement'));
   });
   test('variable name with digit at the beginning', () => {
     const text = `proc main
@@ -470,7 +470,7 @@ describe('Variable', () => {
       speak "Hello," $1u
     exit`;
     const f = () => parse(text);
-    expect(f).toThrow(new ParseError(3, 'Invalid variable name'));
+    expect(f).toThrow(new ParseError(3, 'Invalid parameter for SPEAK statement'));
   });
 });
 
@@ -478,7 +478,7 @@ describe('Incorrect Statement Syntax', () => {
   test('incorrect parameter in PROC statement', () => {
     const text = `proc main extra`;
     const f = () => parse(text);
-    expect(f).toThrow(new ParseError(1, 'Incorrect parameter for PROC statement'));
+    expect(f).toThrow(new ParseError(1, 'Too many parameters for PROC statement'));
   });
 
   test('extra arguments in INIT statement', () => {
@@ -486,7 +486,7 @@ describe('Incorrect Statement Syntax', () => {
     init extra
       exit`;
     const f = () => parse(text);
-    expect(f).toThrow(new ParseError(2, 'Extra characters after INIT statement'));
+    expect(f).toThrow(new ParseError(2, 'Too many parameters for INIT statement'));
   });
 
   test('incorrect parameter in HEAR statement', () => {
@@ -494,7 +494,7 @@ describe('Incorrect Statement Syntax', () => {
       hear 12345
         exit`;
     const f = () => parse(text);
-    expect(f).toThrow(new ParseError(2, 'Incorrect parameter for HEAR statement'));
+    expect(f).toThrow(new ParseError(2, 'Invalid parameter for HEAR statement'));
   });
 
   test('extra arguments in DEFAULT statement', () => {
@@ -504,7 +504,7 @@ describe('Incorrect Statement Syntax', () => {
         default extra
           exit`;
     const f = () => parse(text);
-    expect(f).toThrow(new ParseError(4, 'Extra characters after DEFAULT statement'));
+    expect(f).toThrow(new ParseError(4, 'Too many parameters for DEFAULT statement'));
   });
 
   test('incorrect parameter for SILENCE statement', () => {
@@ -523,7 +523,7 @@ describe('Incorrect Statement Syntax', () => {
         speak 12345
         exit`;
     const f = () => parse(text);
-    expect(f).toThrow(new ParseError(3, 'Incorrect parameter for SPEAK statement'));
+    expect(f).toThrow(new ParseError(3, 'Invalid parameter for SPEAK statement'));
   });
 
   test('missing arguments in GOTO statement', () => {
@@ -531,7 +531,7 @@ describe('Incorrect Statement Syntax', () => {
       init
         goto`;
     const f = () => parse(text);
-    expect(f).toThrow(new ParseError(3, 'Incorrect parameter for GOTO statement'));
+    expect(f).toThrow(new ParseError(3, 'Missing parameter for GOTO statement'));
   });
 
   test('extra arguments in EXIT statement', () => {
@@ -539,7 +539,7 @@ describe('Incorrect Statement Syntax', () => {
     init
       exit extra`;
     const f = () => parse(text);
-    expect(f).toThrow(new ParseError(3, 'Extra characters after EXIT statement'));
+    expect(f).toThrow(new ParseError(3, 'Too many parameters for EXIT statement'));
   });
 });
 
@@ -609,7 +609,7 @@ test('hear neither a string nor regex', () => {
         exit
   `;
   const f = () => parse(text);
-  expect(f).toThrow(new ParseError(3, 'Incorrect parameter for HEAR statement'));
+  expect(f).toThrow(new ParseError(3, 'Invalid parameter for HEAR statement'));
 });
 
 describe('Full Scripts', () => {

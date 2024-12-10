@@ -247,40 +247,42 @@ describe('A Simple Script', () => {
   });
   // 测试每个状态
   describe('full_proc', () => {
-    beforeEach(() => {
-      interpreter.start('full_proc');
+    beforeEach(async () => {
+      await interpreter.start('full_proc');
     });
     test('init', () => {
       // 检查是否发送了初始化消息
       expect(onSendMock).toHaveBeenCalledWith('a init message', userId);
+      expect(onSendMock).toHaveBeenCalledTimes(1);
     });
     test('silence', () => {
       // 是否有一个 timer
       expect(interpreter.timers).toHaveLength(1);
-      jest.advanceTimersByTime(10001); // 模拟10秒后。由于无法触发 setTimeout 0，增加了1毫秒
+      jest.advanceTimersByTime(10000); // 模拟10秒后。
       // 转移到 proc_without_hear
       expect(interpreter.curProc.id).toBe('proc_without_hear');
     });
-    test('hear a string', () => {
-      interpreter.receive('a string');
+    test('hear a string', async () => {
+      await interpreter.receive('a string');
       expect(onSendMock).toHaveBeenCalledWith('heard a string', userId);
+      expect(onSendMock).toHaveBeenCalledTimes(2);
       expect(onExitMock).toHaveBeenCalled();
     });
-    test('hear a regex', () => {
-      interpreter.receive('regex2');
+    test('hear a regex', async () => {
+      await interpreter.receive('regex2');
       expect(onSendMock).toHaveBeenCalledWith('heard a regex', userId);
       expect(onExitMock).toHaveBeenCalled();
     });
-    test('default', () => {
-      interpreter.receive('unexpected');
+    test('default', async () => {
+      await interpreter.receive('unexpected');
       // 转移到 proc_without_init
       expect(interpreter.curProc.id).toBe('proc_without_init');
     });
   });
 
   describe('proc_without_hear', () => {
-    beforeEach(() => {
-      interpreter.start('proc_without_hear');
+    beforeEach(async () => {
+      await interpreter.start('proc_without_hear');
     });
 
     test('init', () => {
@@ -291,30 +293,30 @@ describe('A Simple Script', () => {
   });
 
   describe('proc_without_init', () => {
-    beforeEach(() => {
-      interpreter.start('proc_without_init');
+    beforeEach(async () => {
+      await interpreter.start('proc_without_init');
     });
 
-    test('hear another string', () => {
-      interpreter.receive('another string');
+    test('hear another string', async () => {
+      await interpreter.receive('another string');
       expect(onSendMock).toHaveBeenCalledWith('heard another string', userId);
       expect(onExitMock).toHaveBeenCalled();
     });
 
-    test('default', () => {
-      interpreter.receive('unexpected');
+    test('default', async () => {
+      await interpreter.receive('unexpected');
       expect(onSendMock).toHaveBeenCalledWith('default message', userId);
       // 转移到 full_proc
       expect(interpreter.curProc.id).toBe('full_proc');
     });
 
-    test('silence', () => {
+    test('silence', async () => {
       expect(interpreter.timers).toHaveLength(2);
-      jest.advanceTimersByTime(10001); // silence 10
-      expect(onSendMock).not.toHaveBeenCalledWith('silence message', userId);
+      await jest.advanceTimersByTimeAsync(10000); // silence 10
+      expect(onSendMock).toHaveBeenCalledWith('silence message', userId);
       expect(interpreter.curProc.id).toBe('proc_without_init'); // 没有转移
 
-      jest.advanceTimersByTime(10001); // silence 20
+      await jest.advanceTimersByTimeAsync(10000); // silence 20
       // 转移到 proc_without_hear
       expect(interpreter.curProc.id).toBe('proc_without_hear');
     });
@@ -322,21 +324,21 @@ describe('A Simple Script', () => {
 
   // 测试完整转移流程
   describe('complete flow', () => {
-    test('full_proc -> proc_without_init -> proc_without_hear', () => {
-      expect(interpreter.isWorking).toBe(false);
-      interpreter.start();
-      expect(interpreter.isWorking).toBe(true);
+    test('full_proc -> proc_without_init -> proc_without_hear', async () => {
+      expect(interpreter.isRunning).toBe(false);
+      await interpreter.start();
+      expect(interpreter.isRunning).toBe(true);
       // 初始状态是否为 full_proc
       expect(interpreter.curProc.id).toBe('full_proc');
       expect(onSendMock).toHaveBeenCalledWith('a init message', userId);
-      interpreter.receive('unknown pattern');
+      await interpreter.receive('unknown pattern');
       // 转移到 proc_without_init
       expect(interpreter.curProc.id).toBe('proc_without_init');
       expect(interpreter.timers).toHaveLength(2);
-      jest.advanceTimersByTime(10001); // silence 10
+      jest.advanceTimersByTime(10000); // silence 10
       expect(onSendMock).toHaveBeenCalledWith('silence message', userId);
       expect(onSendMock).toHaveBeenCalledTimes(2);
-      jest.advanceTimersByTime(10001); // silence 20
+      jest.advanceTimersByTime(10000); // silence 20
       // 转移到 proc_without_hear
       expect(interpreter.curProc.id).toBe('proc_without_hear');
       expect(onSendMock).toHaveBeenCalledWith('another init message', userId);
@@ -345,3 +347,49 @@ describe('A Simple Script', () => {
     });
   });
 });
+
+// 测试如果传入脚本不规范（parse正确返回不会这样）
+describe.only('Script Error', ()=>{
+  test('undefined entryProcId',async ()=>{
+
+    const script:Script = {
+      "entryProcId": "undefined_proc_id",
+      "procs": {
+        "main": {
+          "lineIdx": 1,
+          "id": "main",
+          "initEvent": {
+            "lineIdx": 2,
+            "type": "InitEvent",
+            "actions": [
+              {
+                "lineIdx": 3,
+                "type": "SpeakAction",
+                "tokens": [
+                  {
+                    "type": "string",
+                    "content": "this will not be sent"
+                  }
+                ]
+              },
+              {
+                "lineIdx": 4,
+                "type": "ExitAction"
+              }
+            ],
+            "hasExitOrGoto": true
+          }
+        }
+      }
+    }
+    const onSendMock = jest.fn();
+    const interpreter = new Interpreter(script, { onSend: onSendMock }, {});
+    await interpreter.start();
+    expect(onSendMock).not.toHaveBeenCalled();
+    expect(interpreter.start).rejects.toThrow(new RuntimeError(1, 'Procedure "undefined_proc" is not defined'))
+  });
+
+  test("undefined goto procId",()=>{
+    /** 原脚本 */
+  })
+})

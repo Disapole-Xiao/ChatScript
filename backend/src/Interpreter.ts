@@ -1,12 +1,13 @@
 import { Script, Procedure, Action, ProcId } from './type';
 import { RuntimeError } from './error';
+import { rejects } from 'assert';
 
 /**
  * 使用解释器需要提供的回调函数
  * @member onSend 在机器人客服有消息要发送给用户时调用
  * @member onExit 可选，在机器人客服主动关闭会话时调用
  * @member onRuntimeError 可选，在发生 `RuntimeError` 错误时调用，默认使用 `console.error`
- * @param userId 可选，机器人客服会在调用上述方法时带上初始传入的 userId。没有传入则为 undefined	
+ * @param userId 可选，机器人客服会在调用上述方法时带上初始传入的 userId。没有传入则为 undefined
  */
 export interface Config {
   onSend: (message: string, userId?: string) => void;
@@ -19,12 +20,11 @@ export class Interpreter implements Config {
   variables: Record<string, any>;
   curProc!: Procedure;
   timers: NodeJS.Timeout[] = [];
-  isWorking: boolean = false; // 会话是否正在运行
-  taskQueue: (() => void)[] = []; // 任务队列减少递归，每个任务是一个函数
+  isRunning: boolean = false; // 会话是否正在运行
+  userId?: string;
   onSend: (message: string, userId?: string) => void;
   onExit: (userId?: string) => void;
   onRuntimeError: (error: RuntimeError, userId?: string) => void;
-  userId?: string;
 
   constructor(script: Script, config: Config, variables: Record<string, any>, userId?: string) {
     this.script = script;
@@ -37,24 +37,27 @@ export class Interpreter implements Config {
 
   /**
    * 开始会话
+   * 
    * 如果对已经结束的会话调用该方法，会重新开始会话。
-   * @param from 可选，从指定的 Procedure 开始会话。默认从 `entryProc` 开始
+   * 
+   * 如果对正在进行的会话调用该方法，会抛出 RuntimeError
+   * 
+   * @param fromProcId 可选，从指定的 Procedure 开始会话。默认从 `entryProcId` 开始
    */
-  start(fromProcId: ProcId = this.script.entryProcId) {
+  async start(fromProcId: ProcId = this.script.entryProcId) {
     try {
-      if (!this.isWorking) {
-        // 如果会话已经结束，重新开始会话
-        this.isWorking = true;
-        this.timers = [];
-        this.taskQueue = [];
-        // 设置当前 Proc
-        if (!this.script.procs[fromProcId]) {
-          throw new RuntimeError(0, `Porcedure ${fromProcId} 未定义`);
-        }
-        this.curProc = this.script.procs[this.script.entryProcId];
-        this.enqueueTask(() => this.execProc(this.curProc)); // 将初始Proc加入队列
-        this.processQueue(); // 开始处理队列
-      } else throw new Error('会话已经在运行');
+      if (this.isRunning) throw new Error('Chat is already running');
+
+      // 如果会话已经结束，重新开始会话
+      this.isRunning = true;
+      this.timers = [];
+      // 设置当前 Proc
+      if (!this.script.procs[fromProcId]) {
+        throw new RuntimeError(1, `Procedure "${fromProcId}" is not defined`);
+      }
+      this.curProc = this.script.procs[fromProcId];
+      await this.execProc(this.curProc);
+
     } catch (error) {
       if (error instanceof RuntimeError) {
         this.onRuntimeError(error, this.userId);
@@ -66,91 +69,80 @@ export class Interpreter implements Config {
 
   /**
    * 接收用户的消息并执行相应的动作
+   * 
+   * 等待用户消息。收到消息后根据消息内容继续执行
+   * 对应 HearEvent 或 DefaultEvent 的时间序列
+   * 
    * @param message 接收到的消息
    */
-  receive(message: string): void {
-    if (!this.isWorking) throw new Error('会话未运行');
-    this.clearTimers();
+  async receive(message: string) {
+    if (!this.isRunning) throw new Error('Chat is not running');
+    
+    this.clearTimers(); // 收到消息后停止计时
 
-    // 将匹配的 hearEvent 对应的 Actions 加入任务队列
+    // 执行匹配的 hearEvent 对应的 Actions
     for (const hearEvent of this.curProc.hearEvents || []) {
-      if ( 
+      if (
         (typeof hearEvent.pattern === 'string' && message.includes(hearEvent.pattern)) ||
         (hearEvent.pattern instanceof RegExp && hearEvent.pattern.test(message))
       ) {
-        this.enqueueTask(() => this.execActions(hearEvent.actions));
-        this.processQueue();
+        await this.execActions(hearEvent.actions);
         return;
       }
     }
 
-    // 如果没有匹配，加入 defaultEvent 的 Events
+    // 如果没有匹配，执行 defaultEvent 的 Events
     if (this.curProc.defaultEvent) {
-      this.enqueueTask(() => this.execActions(this.curProc.defaultEvent!.actions));
+      await this.execActions(this.curProc.defaultEvent!.actions);
     }
-    this.processQueue();
   }
 
-  /**
-   * 结束会话
-   */
-  end(): void {
-    if (!this.isWorking) return;
+  end() {
+    this.isRunning = false;
     this.clearTimers();
-    this.isWorking = false;
   }
-  /**
-   * 添加任务到队列
-   * @param task 无参数无返回值的函数
-   */
-  private enqueueTask(task: () => void) {
-    this.taskQueue.push(task);
-  }
-
-  /**
-   * 按顺序处理任务
-   */
-  private processQueue() {
-    while (this.taskQueue.length > 0) {
-      const task = this.taskQueue.shift();
-      if (task) task(); // 执行任务
-    }
-  }
-
   /**
    * 执行指定 Procedure
-   * 如果存在 initEvent，将对应事件集加入任务队列
-   * 如果存在 silenceEvents，将定时器任务加入任务队列，定时器任务会在 `timeout` 秒后执行该 silenceEvent 对应的事件集
+   *
+   * 如果存在 InitEvent，执行对应事件序列。
+   * 如果 InitEvent 存在 exit 或 goto 语句，
+   * 执行完后结束当前 Procedure。
+   *
+   * 如果存在 SilenceEvents，设置定时器，
+   * 在 `timeout` 秒后执行该 silenceEvent 对应的事件序列
+   *
    * @param proc 要执行的 Procedure
    */
-  protected execProc(proc: Procedure): void {
-    this.curProc = proc;
-
+  private async execProc(proc: Procedure) {
     // 执行 initEvent
     if (proc.initEvent) {
-      this.enqueueTask(() => this.execActions(proc.initEvent!.actions));
+      await this.execActions(proc.initEvent.actions);
+      if (proc.initEvent.hasExitOrGoto) return; // 如果会退出，执行完之后返回
     }
 
     // 设置 silenceEvents 定时器
     if (proc.silenceEvents) {
       for (const silenceEvent of proc.silenceEvents) {
-        this.enqueueTask(() => {
-          const timer = setTimeout(() => {
-            this.execActions(silenceEvent.actions);
-          }, silenceEvent.timeout * 1000);
-          this.timers.push(timer);
-        });
+        const timer = setTimeout(() => {
+          this.execActions(silenceEvent.actions);
+        }, silenceEvent.timeout * 1000);
+        this.timers.push(timer);
       }
     }
+
+    
   }
 
   /**
    * 执行动作列表（某事件对应的动作）
+   *
    * 执行完 exitAction 或 gotoAction 后，会立即停止执行后续动作。
-   * gotoAction 会将下一个要执行的 Procedure 加入任务队列
+   * gotoAction 会设置 `curProc` 为转移的 Procedure
+   *
    * @param actions 要执行的动作列表
    */
-  private execActions(actions: Action[]): void {
+  private async execActions(actions: Action[]) {
+    if (!this.isRunning) return;
     try {
       for (const action of actions) {
         switch (action.type) {
@@ -159,11 +151,12 @@ export class Interpreter implements Config {
             for (const token of action.tokens) {
               if (token.type === 'string') {
                 message += token.content;
-              } else { // 如果是变量，在变量集中查找
+              } else {
+                // 如果是变量，在变量集中查找
                 if (this.variables[token.content]) {
                   message += this.variables[token.content];
                 } else {
-                  throw new RuntimeError(action.lineIdx, `变量 ${token.content} 不存在`);
+                  throw new RuntimeError(action.lineIdx, `Varialble ${token.content} does not exist`);
                 }
               }
             }
@@ -171,17 +164,15 @@ export class Interpreter implements Config {
             break;
 
           case 'GotoAction':
-            this.clearTimers();
-            this.taskQueue = []; // 清空任务队列，不再执行当前 Proc 的后续 Event
             const nextProc = this.script.procs[action.procId];
             if (!nextProc)
-              throw new RuntimeError(action.lineIdx, `Porcedure ${action.procId} 未定义`);
-            this.enqueueTask(() => this.execProc(nextProc)); // 下一个过程加入队列
-            setTimeout(() => this.processQueue(), 0);
+              throw new RuntimeError(action.lineIdx, `Porcedure "${action.procId}" is not defined`);
+            this.curProc = nextProc;
+            await this.execProc(this.curProc); // 执行下一个 Proc
             return; // 停止执行后续动作
 
           case 'ExitAction':
-            this.end();
+            this.end(); // 结束会话
             this.onExit(this.userId);
             return; // 停止执行后续动作
         }
@@ -189,7 +180,6 @@ export class Interpreter implements Config {
     } catch (error) {
       if (error instanceof RuntimeError) {
         this.onRuntimeError(error, this.userId);
-        console.log('测试');
       } else {
         throw error;
       }
@@ -197,7 +187,7 @@ export class Interpreter implements Config {
   }
 
   /**
-   * 取消所有定时器并将 timers 列表清空
+   * 取消所有定时器并将 `timers` 列表清空
    */
   private clearTimers(): void {
     for (const timer of this.timers) {
