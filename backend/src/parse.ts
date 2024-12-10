@@ -1,13 +1,10 @@
 import { Script, Procedure, Action, ProcEvent, ProcId, Token } from './type';
 import { ParseError } from './error';
-import {exampleTexts} from '../examples';
-const exampleText = exampleTexts[0];
-console.log(parse(exampleText));
-console.log('finish');
+import {exampleTexts} from '../examplesTexts';
 
 export function parse(script: string): Script {
   let lineIdx: number = 0,
-    procs: Map<ProcId, Procedure> = new Map(), // 所有proc
+    procs: Record<ProcId, Procedure> = {}, // 所有proc
     entryProcId: ProcId | null = null,
     curProc: Procedure | null = null, // 当前 proc
     curEvent: ProcEvent | null = null, // 当前 Event
@@ -76,15 +73,15 @@ export function parse(script: string): Script {
       throw new ParseError(lineIdx, 'Incorrect parameter for PROC statement');
     }
     const procId = result[1];
-    if (procs.get(procId)) {
+    if (procs[procId]) {
       throw new ParseError(lineIdx, `Duplicate definition of Procedure "${procId}"`);
     }
     const newProc: Procedure = {
       lineIdx: lineIdx,
       id: procId,
     };
-    if (procs.size === 0) entryProcId = procId;
-    procs.set(procId, newProc);
+    if (Object.keys(procs).length === 0) entryProcId = procId;
+    procs[procId] = newProc;
     curProc = newProc; // 切换到当前 proc
     curEvent = null;
   }
@@ -301,15 +298,15 @@ export function parse(script: string): Script {
 
   function checkScript() {
     // 检查是否有 proc 和 entryProcId
-    if (procs.size === 0 || !entryProcId)
+    if (Object.keys(procs).length === 0 || !entryProcId)
       throw new ParseError(1, `No Procedure in script`);
     // 检查每一个 proc 是否合法
-    for (let proc of procs.values()) {
+    for (const proc of Object.values(procs)) {
       checkProc(proc);
     }
     // 检查是否存在未定义的 proc
     for (let { line, procId } of referedProcIds) {
-      if (!procs.get(procId))
+      if (!procs[procId])
         throw new ParseError(line, `Procedure "${procId}" is not defined`);
     }
   }

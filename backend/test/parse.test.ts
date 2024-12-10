@@ -2,8 +2,6 @@ import { parse } from '../src/parse';
 import { Script } from '../src/type';
 import { ParseError } from '../src/error';
 
-
-
 test('ignore comment', () => {
   const text = `# some comment
     proc main
@@ -11,16 +9,19 @@ test('ignore comment', () => {
         #speak "Hello, world"
         exit`;
   const result = parse(text);
-  expect(result.procs.size).toBe(1);
-  expect(result.entryProcId).toBe('main');
-  expect(result.procs.get('main')).toEqual({
-    lineIdx: 2,
-    id: 'main',
-    initEvent: {
-      type: 'InitEvent',
-      lineIdx: 3,
-      actions: [{ lineIdx: 5, type: 'ExitAction' }],
-      hasExitOrGoto: true,
+  expect(result).toEqual({
+    entryProcId: 'main',
+    procs: {
+      main: {
+        lineIdx: 2,
+        id: 'main',
+        initEvent: {
+          type: 'InitEvent',
+          lineIdx: 3,
+          actions: [{ lineIdx: 5, type: 'ExitAction' }],
+          hasExitOrGoto: true,
+        },
+      },
     },
   });
 });
@@ -201,15 +202,73 @@ describe('Can Exit or Goto', () => {
     silence 20
       speak "3"`;
     const result = parse(text);
-    expect(result.procs.size).toBe(1);
-    const proc = result.procs.get('main');
-    expect(proc?.initEvent).toBeDefined();
-    expect(proc?.hearEvents).toHaveLength(1);
-    expect(proc?.defaultEvent).toBeDefined();
-    expect(proc?.silenceEvents).toHaveLength(3);
+    expect(result).toEqual({
+      entryProcId: 'main',
+      procs: {
+        main: {
+          lineIdx: 1,
+          id: 'main',
+          initEvent: {
+            type: 'InitEvent',
+            lineIdx: 2,
+            actions: [{ lineIdx: 3, type: 'ExitAction' }],
+            hasExitOrGoto: true,
+          },
+          hearEvents: [
+            {
+              type: 'HearEvent',
+              lineIdx: 4,
+              pattern: 'hi',
+              actions: [{ lineIdx: 5, type: 'ExitAction' }],
+              hasExitOrGoto: true,
+            },
+          ],
+          defaultEvent: {
+            type: 'DefaultEvent',
+            lineIdx: 6,
+            actions: [{ lineIdx: 7, type: 'ExitAction' }],
+            hasExitOrGoto: true,
+          },
+          silenceEvents: [
+            {
+              type: 'SilenceEvent',
+              lineIdx: 8,
+              timeout: 5,
+              actions: [
+                {
+                  lineIdx: 9,
+                  type: 'SpeakAction',
+                  tokens: [{ type: 'string', content: '1' }],
+                },
+              ],
+              hasExitOrGoto: false,
+            },
+            {
+              type: 'SilenceEvent',
+              lineIdx: 10,
+              timeout: 10,
+              actions: [{ lineIdx: 11, type: 'GotoAction', procId: 'main' }],
+              hasExitOrGoto: true,
+            },
+            {
+              type: 'SilenceEvent',
+              lineIdx: 12,
+              timeout: 20,
+              actions: [
+                {
+                  lineIdx: 13,
+                  type: 'SpeakAction',
+                  tokens: [{ type: 'string', content: '3' }],
+                },
+              ],
+              hasExitOrGoto: false,
+            },
+          ],
+        },
+      },
+    });
   });
 });
-
 describe('Procedure Structure', () => {
   test('missing InitEvent in Procedure with HearEvent', () => {
     const text = `proc main
@@ -220,12 +279,39 @@ describe('Procedure Structure', () => {
       silence 5
         exit`;
     const result = parse(text);
-    expect(result.procs.size).toBe(1);
-    const proc = result.procs.get('main');
-    expect(proc?.initEvent).toBeUndefined();
-    expect(proc?.hearEvents).toHaveLength(1);
-    expect(proc?.defaultEvent).toBeDefined();
-    expect(proc?.silenceEvents).toHaveLength(1);
+    expect(result).toEqual({
+      entryProcId: 'main',
+      procs: {
+        main: {
+          lineIdx: 1,
+          id: 'main',
+          hearEvents: [
+            {
+              type: 'HearEvent',
+              lineIdx: 2,
+              pattern: 'hi',
+              actions: [{ lineIdx: 3, type: 'ExitAction' }],
+              hasExitOrGoto: true,
+            },
+          ],
+          defaultEvent: {
+            type: 'DefaultEvent',
+            lineIdx: 4,
+            actions: [{ lineIdx: 5, type: 'ExitAction' }],
+            hasExitOrGoto: true,
+          },
+          silenceEvents: [
+            {
+              type: 'SilenceEvent',
+              lineIdx: 6,
+              timeout: 5,
+              actions: [{ lineIdx: 7, type: 'ExitAction' }],
+              hasExitOrGoto: true,
+            },
+          ],
+        },
+      },
+    });
   });
 
   test('missing InitEvent in Procedure without HearEvent', () => {
@@ -238,20 +324,54 @@ describe('Procedure Structure', () => {
 
   test('HearEvent with DefaultEvent and SilenceEvent defined', () => {
     const text = `proc main
-      init
-        exit
-      hear "something"
-        exit
-      default
-        exit
-      silence 5
-        exit`;
+    init
+      exit
+    hear "something"
+      exit
+    default
+      exit
+    silence 5
+      exit`;
     const result = parse(text);
-    expect(result.procs.size).toBe(1);
-    const proc = result.procs.get('main');
-    expect(proc?.hearEvents).toHaveLength(1);
-    expect(proc?.defaultEvent).toBeDefined();
-    expect(proc?.silenceEvents).toHaveLength(1);
+    expect(result).toEqual({
+      entryProcId: 'main',
+      procs: {
+        main: {
+          lineIdx: 1,
+          id: 'main',
+          initEvent: {
+            type: 'InitEvent',
+            lineIdx: 2,
+            actions: [{ lineIdx: 3, type: 'ExitAction' }],
+            hasExitOrGoto: true,
+          },
+          hearEvents: [
+            {
+              type: 'HearEvent',
+              lineIdx: 4,
+              pattern: 'something',
+              actions: [{ lineIdx: 5, type: 'ExitAction' }],
+              hasExitOrGoto: true,
+            },
+          ],
+          defaultEvent: {
+            type: 'DefaultEvent',
+            lineIdx: 6,
+            actions: [{ lineIdx: 7, type: 'ExitAction' }],
+            hasExitOrGoto: true,
+          },
+          silenceEvents: [
+            {
+              type: 'SilenceEvent',
+              lineIdx: 8,
+              timeout: 5,
+              actions: [{ lineIdx: 9, type: 'ExitAction' }],
+              hasExitOrGoto: true,
+            },
+          ],
+        },
+      },
+    });
   });
 
   test('missing DefaultEvent when HearEvent is defined', () => {
@@ -297,6 +417,7 @@ test('unclosed string', () => {
   const f = () => parse(text);
   expect(f).toThrow(new ParseError(3, 'Unclosed string'));
 });
+
 describe('Variable', () => {
   test('speak with variable', () => {
     const text = `proc main
@@ -304,18 +425,34 @@ describe('Variable', () => {
       speak "Hello," $surname $sex
       exit`;
     const result = parse(text);
-    expect(result.procs.size).toBe(1);
-    const proc = result.procs.get('main');
-    expect(proc?.initEvent?.actions).toHaveLength(2);
-    const action = proc?.initEvent?.actions[0];
-    expect(action).toEqual({
-      lineIdx: 3,
-      type: 'SpeakAction',
-      tokens: [
-        { type: 'string', content: 'Hello,' },
-        { type: 'variable', content: 'surname' },
-        { type: 'variable', content: 'sex' },
-      ],
+    expect(result).toEqual({
+      entryProcId: 'main',
+      procs: {
+        main: {
+          id: 'main',
+          lineIdx: 1,
+          initEvent: {
+            type: 'InitEvent',
+            lineIdx: 2,
+            actions: [
+              {
+                lineIdx: 3,
+                type: 'SpeakAction',
+                tokens: [
+                  { type: 'string', content: 'Hello,' },
+                  { type: 'variable', content: 'surname' },
+                  { type: 'variable', content: 'sex' },
+                ],
+              },
+              {
+                lineIdx: 4,
+                type: 'ExitAction',
+              },
+            ],
+            hasExitOrGoto: true,
+          },
+        },
+      },
     });
   });
 
@@ -325,12 +462,7 @@ describe('Variable', () => {
       speak "Hello," $us@er
     exit`;
     const f = () => parse(text);
-    expect(f).toThrow(
-      new ParseError(
-        3,
-        'Invalid variable name'
-      )
-    );
+    expect(f).toThrow(new ParseError(3, 'Invalid variable name'));
   });
   test('variable name with digit at the beginning', () => {
     const text = `proc main
@@ -338,12 +470,7 @@ describe('Variable', () => {
       speak "Hello," $1u
     exit`;
     const f = () => parse(text);
-    expect(f).toThrow(
-      new ParseError(
-        3,
-        'Invalid variable name'
-      )
-    );
+    expect(f).toThrow(new ParseError(3, 'Invalid variable name'));
   });
 });
 
@@ -425,13 +552,54 @@ test('hear regex', () => {
     silence 5
       exit`;
   const result = parse(text);
-  expect(result.procs.size).toBe(1);
-  const proc = result.procs.get('main');
-  expect(proc?.hearEvents).toHaveLength(1);
-  expect(proc?.defaultEvent).toBeDefined();
-  expect(proc?.silenceEvents).toHaveLength(1);
-  if (proc?.hearEvents) expect(proc.hearEvents[0].pattern).toEqual(/^[0-9]+$/);
-  else fail();
+  expect(result).toEqual({
+    entryProcId: 'main',
+    procs: {
+      main: {
+        defaultEvent: {
+          actions: [
+            {
+              lineIdx: 5,
+              type: 'ExitAction',
+            },
+          ],
+          hasExitOrGoto: true,
+          lineIdx: 4,
+          type: 'DefaultEvent',
+        },
+        hearEvents: [
+          {
+            actions: [
+              {
+                lineIdx: 3,
+                type: 'ExitAction',
+              },
+            ],
+            hasExitOrGoto: true,
+            lineIdx: 2,
+            pattern: /^[0-9]+$/,
+            type: 'HearEvent',
+          },
+        ],
+        id: 'main',
+        lineIdx: 1,
+        silenceEvents: [
+          {
+            actions: [
+              {
+                lineIdx: 7,
+                type: 'ExitAction',
+              },
+            ],
+            hasExitOrGoto: true,
+            lineIdx: 6,
+            timeout: 5,
+            type: 'SilenceEvent',
+          },
+        ],
+      },
+    },
+  });
 });
 
 test('hear neither a string nor regex', () => {
@@ -443,16 +611,17 @@ test('hear neither a string nor regex', () => {
   const f = () => parse(text);
   expect(f).toThrow(new ParseError(3, 'Incorrect parameter for HEAR statement'));
 });
-describe('Full Scripts', ()=>{test('simple text with one procedure', () => {
-  const text = `proc main
+
+describe('Full Scripts', () => {
+  test('simple text with one procedure', () => {
+    const text = `proc main
     init
       speak "Hello, world"
       exit`;
-  const result = parse(text);
-  const expectedScript: Script = {
-    entryProcId: 'main',
-    procs: new Map(
-      Object.entries({
+    const result = parse(text);
+    const expectedScript: Script = {
+      entryProcId: 'main',
+      procs: {
         main: {
           lineIdx: 1,
           id: 'main',
@@ -473,11 +642,8 @@ describe('Full Scripts', ()=>{test('simple text with one procedure', () => {
             hasExitOrGoto: true,
           },
         },
-      })
-    ),
-  };
-  expect(result).toEqual(expectedScript);
-});
-
-
+      },
+    };
+    expect(result).toEqual(expectedScript);
+  });
 });

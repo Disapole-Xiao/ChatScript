@@ -2,7 +2,7 @@ export type ProcId = string;
 
 export type Script = {
   entryProcId: ProcId;
-  procs: Map<ProcId, Procedure>;
+  procs: Record<ProcId, Procedure>;
 };
 
 export type Procedure = {

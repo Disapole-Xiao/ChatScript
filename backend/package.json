@@ -5,7 +5,7 @@
   "scripts": {
     "test": "npx jest --coverage",
     "start": "npx tsx src/server.ts",
-    "client": "npx tsx src/client.ts u1"
+    "client": "npx tsx src/client.ts 1"
   },
   "dependencies": {
     "ws": "^8.18.0"

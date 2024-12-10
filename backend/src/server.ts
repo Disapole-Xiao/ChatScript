@@ -1,13 +1,10 @@
-import * as fs from 'fs';
 import { parse } from './parse';
-import { ParseError } from './error';
 import WebSocket from 'ws';
 import { Interpreter, Config } from './Interpreter';
 import { users } from '../userData';
-
-const scriptPath = process.argv[2] || './example1.txt';
-
-const text = fs.readFileSync(scriptPath, 'utf8');
+import { exampleTexts } from '../examplesTexts';
+const testNum = 1;
+const text = exampleTexts[testNum];
 
 try {
   const script = parse(text);
@@ -33,10 +30,9 @@ try {
         ws.close();
       },
     };
-    const variables = new Map(Object.entries(users[userId]));
 
     // 创建新的聊天实例
-    const chat = new Interpreter(script!, config, variables); // TODO 补充回调
+    const chat = new Interpreter(script!, config, users[testNum][userId]); // TODO 补充回调
 
     // 收到用户消息就发送给机器人
     ws.on('message', message => {

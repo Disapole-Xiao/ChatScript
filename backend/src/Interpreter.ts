@@ -1,4 +1,4 @@
-import { Script, Procedure, Action } from './type';
+import { Script, Procedure, Action, ProcId } from './type';
 import { RuntimeError } from './error';
 
 /**
@@ -6,53 +6,58 @@ import { RuntimeError } from './error';
  * @member onSend 在机器人客服有消息要发送给用户时调用
  * @member onExit 可选，在机器人客服主动关闭会话时调用
  * @member onRuntimeError 可选，在发生 `RuntimeError` 错误时调用，默认使用 `console.error`
+ * @param userId 可选，机器人客服会在调用上述方法时带上初始传入的 userId。没有传入则为 undefined	
  */
 export interface Config {
-  onSend: (message: string) => void;
-  onExit?: () => void;
-  onRuntimeError?: (error: RuntimeError) => void;
+  onSend: (message: string, userId?: string) => void;
+  onExit?: (userId?: string) => void;
+  onRuntimeError?: (error: RuntimeError, userId: string) => void;
 }
 
 export class Interpreter implements Config {
-  readonly script: Script;
-  readonly variables: Map<string, any>;
-  private curProc!: Procedure;
-  private timers: NodeJS.Timeout[] = [];
-  private isWorking: boolean = true; // 会话是否正在运行
-  private taskQueue: (() => void)[] = []; // 任务队列减少递归，每个任务是一个函数
-  onSend: (message: string) => void;
-  onExit: () => void;
-  onRuntimeError: (error: RuntimeError) => void;
+  script: Script;
+  variables: Record<string, any>;
+  curProc!: Procedure;
+  timers: NodeJS.Timeout[] = [];
+  isWorking: boolean = false; // 会话是否正在运行
+  taskQueue: (() => void)[] = []; // 任务队列减少递归，每个任务是一个函数
+  onSend: (message: string, userId?: string) => void;
+  onExit: (userId?: string) => void;
+  onRuntimeError: (error: RuntimeError, userId?: string) => void;
+  userId?: string;
 
-  constructor(script: Script, config: Config, variables: Map<string, any>) {
+  constructor(script: Script, config: Config, variables: Record<string, any>, userId?: string) {
     this.script = script;
     this.onSend = config.onSend;
     this.onExit = config.onExit || (() => {});
     this.onRuntimeError = config.onRuntimeError || console.error;
     this.variables = variables;
+    this.userId = userId;
   }
 
   /**
    * 开始会话
    * 如果对已经结束的会话调用该方法，会重新开始会话。
+   * @param from 可选，从指定的 Procedure 开始会话。默认从 `entryProc` 开始
    */
-  start() {
+  start(fromProcId: ProcId = this.script.entryProcId) {
     try {
-      if (this.isWorking) {
+      if (!this.isWorking) {
         // 如果会话已经结束，重新开始会话
-        this.isWorking = false;
+        this.isWorking = true;
         this.timers = [];
         this.taskQueue = [];
-        if (!this.script.procs.has(this.script.entryProcId)) {
-          throw new RuntimeError(0, `Porcedure ${this.script.entryProcId} 未定义`);
+        // 设置当前 Proc
+        if (!this.script.procs[fromProcId]) {
+          throw new RuntimeError(0, `Porcedure ${fromProcId} 未定义`);
         }
-        this.curProc = this.script.procs.get(this.script.entryProcId)!;
+        this.curProc = this.script.procs[this.script.entryProcId];
         this.enqueueTask(() => this.execProc(this.curProc)); // 将初始Proc加入队列
         this.processQueue(); // 开始处理队列
       } else throw new Error('会话已经在运行');
     } catch (error) {
       if (error instanceof RuntimeError) {
-        this.onRuntimeError(error);
+        this.onRuntimeError(error, this.userId);
       } else {
         throw error;
       }
@@ -64,13 +69,12 @@ export class Interpreter implements Config {
    * @param message 接收到的消息
    */
   receive(message: string): void {
-    if (this.isWorking) throw new Error('会话未运行');
-    console.debug('receive', message);
+    if (!this.isWorking) throw new Error('会话未运行');
     this.clearTimers();
 
     // 将匹配的 hearEvent 对应的 Actions 加入任务队列
     for (const hearEvent of this.curProc.hearEvents || []) {
-      if (
+      if ( 
         (typeof hearEvent.pattern === 'string' && message.includes(hearEvent.pattern)) ||
         (hearEvent.pattern instanceof RegExp && hearEvent.pattern.test(message))
       ) {
@@ -91,9 +95,9 @@ export class Interpreter implements Config {
    * 结束会话
    */
   end(): void {
-    if (this.isWorking) return;
+    if (!this.isWorking) return;
     this.clearTimers();
-    this.isWorking = true;
+    this.isWorking = false;
   }
   /**
    * 添加任务到队列
@@ -119,9 +123,8 @@ export class Interpreter implements Config {
    * 如果存在 silenceEvents，将定时器任务加入任务队列，定时器任务会在 `timeout` 秒后执行该 silenceEvent 对应的事件集
    * @param proc 要执行的 Procedure
    */
-  private execProc(proc: Procedure): void {
+  protected execProc(proc: Procedure): void {
     this.curProc = proc;
-    console.debug('转移到' + proc.id);
 
     // 执行 initEvent
     if (proc.initEvent) {
@@ -152,27 +155,25 @@ export class Interpreter implements Config {
       for (const action of actions) {
         switch (action.type) {
           case 'SpeakAction':
-            console.debug('执行 speakAction');
             let message = '';
             for (const token of action.tokens) {
               if (token.type === 'string') {
                 message += token.content;
-              } else {
-                if (this.variables.has(token.content)) {
-                  message += this.variables.get(token.content);
+              } else { // 如果是变量，在变量集中查找
+                if (this.variables[token.content]) {
+                  message += this.variables[token.content];
                 } else {
                   throw new RuntimeError(action.lineIdx, `变量 ${token.content} 不存在`);
                 }
               }
             }
-            this.onSend(message); // 发送消息
+            this.onSend(message, this.userId); // 发送消息
             break;
 
           case 'GotoAction':
-            console.debug('执行 gotoAction')
             this.clearTimers();
             this.taskQueue = []; // 清空任务队列，不再执行当前 Proc 的后续 Event
-            const nextProc = this.script.procs.get(action.procId);
+            const nextProc = this.script.procs[action.procId];
             if (!nextProc)
               throw new RuntimeError(action.lineIdx, `Porcedure ${action.procId} 未定义`);
             this.enqueueTask(() => this.execProc(nextProc)); // 下一个过程加入队列
@@ -180,15 +181,14 @@ export class Interpreter implements Config {
             return; // 停止执行后续动作
 
           case 'ExitAction':
-            console.debug('执行 exitAction');
             this.end();
-            this.onExit();
+            this.onExit(this.userId);
             return; // 停止执行后续动作
         }
       }
     } catch (error) {
       if (error instanceof RuntimeError) {
-        this.onRuntimeError(error);
+        this.onRuntimeError(error, this.userId);
         console.log('测试');
       } else {
         throw error;
