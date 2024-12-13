@@ -1,18 +1,17 @@
 import { Script, Procedure, Action, ProcId } from './type';
 import { RuntimeError } from './error';
-import { rejects } from 'assert';
 
 /**
  * 使用解释器需要提供的回调函数
  * @member onSend 在机器人客服有消息要发送给用户时调用
  * @member onExit 可选，在机器人客服主动关闭会话时调用
- * @member onRuntimeError 可选，在发生 `RuntimeError` 错误时调用，默认使用 `console.error`
+ * @member onError 可选，在发生错误时调用，默认使用 `console.error`
  * @param userId 可选，机器人客服会在调用上述方法时带上初始传入的 userId。没有传入则为 undefined
  */
 export interface Config {
   onSend: (message: string, userId?: string) => void;
   onExit?: (userId?: string) => void;
-  onRuntimeError?: (error: RuntimeError, userId: string) => void;
+  onError?: (error: Error, userId: string) => void;
 }
 
 export class Interpreter implements Config {
@@ -24,29 +23,29 @@ export class Interpreter implements Config {
   userId?: string;
   onSend: (message: string, userId?: string) => void;
   onExit: (userId?: string) => void;
-  onRuntimeError: (error: RuntimeError, userId?: string) => void;
+  onError: (error: Error, userId?: string) => void;
 
   constructor(script: Script, config: Config, variables: Record<string, any>, userId?: string) {
     this.script = script;
     this.onSend = config.onSend;
     this.onExit = config.onExit || (() => {});
-    this.onRuntimeError = config.onRuntimeError || console.error;
+    this.onError = config.onError || console.error;
     this.variables = variables;
     this.userId = userId;
   }
 
   /**
    * 开始会话
-   * 
+   *
    * 如果对已经结束的会话调用该方法，会重新开始会话。
-   * 
+   *
    * 如果对正在进行的会话调用该方法，会抛出 RuntimeError
-   * 
+   *
    * @param fromProcId 可选，从指定的 Procedure 开始会话。默认从 `entryProcId` 开始
    */
   async start(fromProcId: ProcId = this.script.entryProcId) {
     try {
-      if (this.isRunning) throw new Error('Chat is already running');
+      if (this.isRunning) throw new Error('Interpreter is already running');
 
       // 如果会话已经结束，重新开始会话
       this.isRunning = true;
@@ -57,43 +56,44 @@ export class Interpreter implements Config {
       }
       this.curProc = this.script.procs[fromProcId];
       await this.execProc(this.curProc);
-
     } catch (error) {
-      if (error instanceof RuntimeError) {
-        this.onRuntimeError(error, this.userId);
-      } else {
-        throw error;
-      }
+      this.onError(error as Error, this.userId);
+      this.end();
     }
   }
 
   /**
    * 接收用户的消息并执行相应的动作
-   * 
+   *
    * 等待用户消息。收到消息后根据消息内容继续执行
    * 对应 HearEvent 或 DefaultEvent 的时间序列
-   * 
+   *
    * @param message 接收到的消息
    */
   async receive(message: string) {
-    if (!this.isRunning) throw new Error('Chat is not running');
-    
-    this.clearTimers(); // 收到消息后停止计时
+    try {
+      if (!this.isRunning) throw new Error('Interpreter is not running');
 
-    // 执行匹配的 hearEvent 对应的 Actions
-    for (const hearEvent of this.curProc.hearEvents || []) {
-      if (
-        (typeof hearEvent.pattern === 'string' && message.includes(hearEvent.pattern)) ||
-        (hearEvent.pattern instanceof RegExp && hearEvent.pattern.test(message))
-      ) {
-        await this.execActions(hearEvent.actions);
-        return;
+      this.clearTimers(); // 收到消息后停止计时
+
+      // 执行匹配的 hearEvent 对应的 Actions
+      for (const hearEvent of this.curProc.hearEvents!) {
+        if (
+          (typeof hearEvent.pattern === 'string' && message.includes(hearEvent.pattern)) ||
+          (hearEvent.pattern instanceof RegExp && hearEvent.pattern.test(message))
+        ) {
+          await this.execActions(hearEvent.actions);
+          return;
+        }
       }
-    }
 
-    // 如果没有匹配，执行 defaultEvent 的 Events
-    if (this.curProc.defaultEvent) {
-      await this.execActions(this.curProc.defaultEvent!.actions);
+      // 如果没有匹配，执行 defaultEvent 的 Events
+      if (this.curProc.defaultEvent) {
+        await this.execActions(this.curProc.defaultEvent!.actions);
+      }
+    } catch (error) {
+      this.onError(error as Error, this.userId);
+      this.end();
     }
   }
 
@@ -129,8 +129,6 @@ export class Interpreter implements Config {
         this.timers.push(timer);
       }
     }
-
-    
   }
 
   /**
@@ -142,7 +140,6 @@ export class Interpreter implements Config {
    * @param actions 要执行的动作列表
    */
   private async execActions(actions: Action[]) {
-    if (!this.isRunning) return;
     try {
       for (const action of actions) {
         switch (action.type) {
@@ -156,7 +153,10 @@ export class Interpreter implements Config {
                 if (this.variables[token.content]) {
                   message += this.variables[token.content];
                 } else {
-                  throw new RuntimeError(action.lineIdx, `Varialble ${token.content} does not exist`);
+                  throw new RuntimeError(
+                    action.lineIdx,
+                    `Varialble "${token.content}" does not exist`
+                  );
                 }
               }
             }
@@ -166,7 +166,7 @@ export class Interpreter implements Config {
           case 'GotoAction':
             const nextProc = this.script.procs[action.procId];
             if (!nextProc)
-              throw new RuntimeError(action.lineIdx, `Porcedure "${action.procId}" is not defined`);
+              throw new RuntimeError(action.lineIdx, `Procedure "${action.procId}" is not defined`);
             this.curProc = nextProc;
             await this.execProc(this.curProc); // 执行下一个 Proc
             return; // 停止执行后续动作
@@ -178,11 +178,8 @@ export class Interpreter implements Config {
         }
       }
     } catch (error) {
-      if (error instanceof RuntimeError) {
-        this.onRuntimeError(error, this.userId);
-      } else {
-        throw error;
-      }
+      this.onError(error as Error, this.userId);
+      this.end();
     }
   }
 

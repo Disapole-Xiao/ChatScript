@@ -9,8 +9,8 @@ export function parse(script: string): Script {
     curProc: Procedure | null = null, // 当前 proc
     curEvent: ProcEvent | null = null, // 当前 Event
     referedProcIds: { line: number; procId: ProcId }[] = []; // 记录下被引用的 Proc，检查是否存在
-  
-    const regexPattern = /^\/.*?\/$/, // 匹配正则表达式或字符串
+
+  const regexPattern = /^\/.*?\/$/, // 匹配正则表达式或字符串
     stringPattern = /^".*?"$/,
     numPattern = /^(\d+)$/,
     procIdPattern = /^[a-zA-Z_]\w*$/, // 字母或下划线开头，数字字母下划线构成
@@ -38,7 +38,7 @@ export function parse(script: string): Script {
    * @example splitWords('some word "a string#" /a regex #/ # comment')
    * // => ['some', 'word', '"a string#"', '/a regex #/']
    */
-  function splitWords(line: string, lineIdx: number): string[] {
+  function splitWords(line: string): string[] {
     const words: string[] = [];
     let i = 0;
     const len = line.length;
@@ -68,7 +68,7 @@ export function parse(script: string): Script {
         if (i >= len || line[i] !== '"') {
           throw new ParseError(lineIdx, 'Unclosed string');
         }
-        words.push(word);
+        words.push('"' + word + '"');
         i++; // 跳过结束的双引号
         continue;
       }
@@ -106,7 +106,7 @@ export function parse(script: string): Script {
     if (line === '' || line.startsWith('#'))
       // 忽略空行和注释行
       return;
-    const words = splitWords(line, lineIdx);
+    const words = splitWords(line);
     const command = words[0].toLowerCase();
     const args = words.slice(1);
     switch (command) {
@@ -149,7 +149,7 @@ export function parse(script: string): Script {
     if (args.length > 1) throw new ParseError(lineIdx, 'Too many parameters for PROC statement');
 
     if (!procIdPattern.test(args[0]))
-      throw new ParseError(lineIdx, 'Porcedure name "${args[0]}" is invalid');
+      throw new ParseError(lineIdx, `Porcedure name "${args[0]}" is invalid`);
     const procId = args[0];
     if (procs[procId])
       throw new ParseError(lineIdx, `Duplicate definition of Procedure "${procId}"`);
