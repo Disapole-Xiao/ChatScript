@@ -2,6 +2,22 @@ import { Script, Procedure, Action, ProcEvent, ProcId, Token } from './type';
 import { ParseError } from './error';
 import { exampleTexts } from '../data/examplesTexts';
 
+/**
+ * 将DSL脚本文本解析为脚本对象
+ * @param {string} script - 要解析的脚本文本
+ * @returns {Script} 解析后的脚本对象
+ * @throws {ParseError} 当脚本存在语法错误时
+ *
+ * @example
+ * ```
+ * const scriptObj = parse(`
+ *   proc main
+ *     init
+ *       speak "hello"
+ *       exit
+ * `);
+ * ```
+ */
 export function parse(script: string): Script {
   let lineIdx: number = 0,
     procs: Record<ProcId, Procedure> = {}, // 所有proc
@@ -10,8 +26,8 @@ export function parse(script: string): Script {
     curEvent: ProcEvent | null = null, // 当前 Event
     referedProcIds: { line: number; procId: ProcId }[] = []; // 记录下被引用的 Proc，检查是否存在
 
-  const regexPattern = /^\/.*?\/$/, // 匹配正则表达式或字符串
-    stringPattern = /^".*?"$/,
+  const regexPattern = /^\/.*\/$/, // 匹配正则表达式或字符串
+    stringPattern = /^"[\s\S]*"$/,
     numPattern = /^(\d+)$/,
     procIdPattern = /^[a-zA-Z_]\w*$/, // 字母或下划线开头，数字字母下划线构成
     varPattern = /^\$[a-zA-Z_]\w*$/; // $ + 字母或下划线开头，数字字母下划线构成
@@ -30,13 +46,24 @@ export function parse(script: string): Script {
 
   /**
    * 将一行文本分割为单词块，并忽略行尾注释
+   * 
+   * `"`和 `/` 包裹的字符串和正则表达式视为一个单词块。
+   * 会将字符串中 `\\`, `\"`, `\n`, `\t` 转义字符替换为实际字符。
+   * 其他不支持的转义将替换为反斜杠后的字符。
    *
-   * `"`和 `/` 包裹的字符串和正则表达式视为一个单词块
+   * @param {string} line - 要分割的行
+   * @returns {string[]} 单词块数组
+   * @throws {ParseError} 当字符串或正则表达式未闭合时
    *
-   * @param line 一行
-   * @returns 单词块数组
-   * @example splitWords('some word "a string#" /a regex #/ # comment')
+   * @example
+   * splitWords(`some word "a string#" /a regex #/ # comment`)
    * // => ['some', 'word', '"a string#"', '/a regex #/']
+   * 
+   * splitWords(`/\/escaped\//`);
+   * // => ['/\/escaped\//']
+   * 
+   * splitWords(`"escaped \" \\ \n\t`);
+   * // => ['"escaped " \ \n\t']
    */
   function splitWords(line: string): string[] {
     const words: string[] = [];
@@ -61,12 +88,28 @@ export function parse(script: string): Script {
       if (char === '"') {
         let word = '';
         i++; // 跳过开头的双引号
-        while (i < len && line[i] !== '"') {
-          word += line[i];
+        while (i < len) {
+          char = line[i];
+          if (char === '\\') {
+            // 处理转义字符
+            i++;
+            if (i < len) {
+              if (line[i] === 'n') // \n
+                word += '\n';
+              else if (line[i] === 't') // \t
+                word += '\t';
+              else // \\, \", 其他
+                word += line[i];
+            }
+          } else if (char === '"') {
+            break;
+          } else {
+            word += char;
+          }
           i++;
         }
         if (i >= len || line[i] !== '"') {
-          throw new ParseError(lineIdx, 'Unclosed string');
+          throw new ParseError(i, 'Unclosed string');
         }
         words.push('"' + word + '"');
         i++; // 跳过结束的双引号
@@ -77,12 +120,23 @@ export function parse(script: string): Script {
       if (char === '/') {
         let word = '';
         i++; // 跳过开头的 /
-        while (i < len && line[i] !== '/') {
-          word += line[i];
+        while (i < len) {
+          char = line[i];
+          if (char === '\\') {
+            // 处理转义字符
+            i++;
+            if (i < len) {
+              word += line[i];
+            }
+          } else if (char === '/') {
+            break;
+          } else {
+            word += char;
+          }
           i++;
         }
         if (i >= len || line[i] !== '/') {
-          throw new ParseError(lineIdx, 'Unclosed regular expression');
+          throw new ParseError(i, 'Unclosed regular expression');
         }
         words.push('/' + word + '/');
         i++; // 跳过结束的 /
@@ -101,6 +155,12 @@ export function parse(script: string): Script {
 
     return words;
   }
+
+  /**
+   * 解析单行文本
+   * @param {string} line - 要解析的行
+   * @throws {ParseError} 当行包含语法错误时
+   */
   function parseLine(line: string): void {
     lineIdx++;
     if (line === '' || line.startsWith('#'))
@@ -139,11 +199,21 @@ export function parse(script: string): Script {
     }
   }
 
+  /**
+   * 向当前事件添加动作
+   * @param {Action} action - 要添加的动作
+   * @throws {ParseError} 当还未定义任何事件时
+   */
   function addActionToCurEvent(action: Action): void {
     if (!curEvent) throw new ParseError(action.lineIdx, 'No Event defined yet');
     curEvent.actions.push(action);
   }
 
+  /**
+   * 处理proc语句，创建新的过程
+   * @param {string[]} args - proc语句的参数
+   * @throws {ParseError} 当参数无效或过程重复定义时
+   */
   function processProc(args: string[]): void {
     if (args.length < 1) throw new ParseError(lineIdx, 'Missing parameter for PROC statement');
     if (args.length > 1) throw new ParseError(lineIdx, 'Too many parameters for PROC statement');
@@ -299,7 +369,8 @@ export function parse(script: string): Script {
   }
   /**
    * 检查一个 procedure 是否合法
-   * @param proc 要检查的 Procedure
+   * @param {Procedure} proc - 要检查的过程
+   * @throws {ParseError} 当过程定义不符合规范时
    */
   function checkProc(proc: Procedure) {
     // 如果没有定义 hear，必须定义 init，且 init 能退出
@@ -345,6 +416,7 @@ export function parse(script: string): Script {
 
   /**
    * 检查整个脚本是否合法
+   * @throws {ParseError} 当脚本整体结构不符合规范时
    */
   function checkScript() {
     // 检查是否有 proc 和 entryProcId

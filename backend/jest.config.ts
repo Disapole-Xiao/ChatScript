@@ -7,7 +7,7 @@ const config: Config = {
     '^.+\\.ts$': 'ts-jest', // 使用 ts-jest 编译 TypeScript 文件
   },
   moduleFileExtensions: ['ts', 'js', 'json'], // Jest 要处理的文件扩展名
-  testMatch: ['**/test/**/*.ts'], // 定义测试文件的路径模式
+  testMatch: ['**/tests/**/*.ts'], // 定义测试文件的路径模式
 };
 
 export default config;

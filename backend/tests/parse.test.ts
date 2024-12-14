@@ -30,7 +30,40 @@ describe('Lexical', () => {
     const f = () => parse(text);
     expect(f).toThrow(new ParseError(2, 'Unclosed regular expression'));
   });
-
+  test('escape regex', () => {
+    const text = String.raw`proc main
+      hear /\//
+        exit
+      default
+        exit
+      silence 5
+        exit`;
+    const result = parse(text);
+    expect(result.procs.main.hearEvents).toBeDefined();
+    expect(result.procs.main.hearEvents![0]).toBeDefined();
+    const regex = result.procs.main.hearEvents![0].pattern;
+    expect(regex).toEqual(/\//);
+  });
+  test('escape string', () => {
+    const text = String.raw`proc main
+      init
+        speak "qoute \""
+        speak "slash \\"
+        speak "newline \n"
+        speak "tab \t"
+        speak "unsupported escape \x"
+        exit`;
+    const result = parse(text);
+    const actions = result.procs.main.initEvent!.actions;
+    expect(actions).toEqual([
+      { lineIdx: 3, type: 'SpeakAction', tokens: [{ type: 'string', content: 'qoute "' }] },
+      { lineIdx: 4, type: 'SpeakAction', tokens: [{ type: 'string', content: 'slash \\' }] },
+      { lineIdx: 5, type: 'SpeakAction', tokens: [{ type: 'string', content: 'newline \n' }] },
+      { lineIdx: 6, type: 'SpeakAction', tokens: [{ type: 'string', content: 'tab \t' }] },
+      { lineIdx: 7, type: 'SpeakAction', tokens: [{ type: 'string', content: 'unsupported escape x' }] },
+      { lineIdx: 8, type: 'ExitAction' },
+    ]);
+  });
   test('comment', () => {
     const text = `# some comment
         proc main

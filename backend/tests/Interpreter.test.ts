@@ -243,6 +243,7 @@ const exampleScript: Script = {
     },
   },
 };
+let getVarMock: jest.Mock;
 let onSendMock: jest.Mock;
 let onExitMock: jest.Mock;
 let onErrorMock: jest.Mock;
@@ -253,11 +254,11 @@ function createInterpreter(script: Script, variables: Record<string, any> = {}) 
   return new Interpreter(
     script,
     {
+      getVar: (varname: string) => variables[varname],
       onSend: onSendMock,
       onExit: onExitMock,
       onError: onErrorMock,
     },
-    variables,
     userId
   );
 }
@@ -575,7 +576,6 @@ describe('Default Config', () => {
       {
         onSend: onSendMock,
       },
-      {},
       userId
     );
     expect(interpreter.onExit).toBeInstanceOf(Function);

@@ -1,7 +1,10 @@
 {
-  "name": "dsl-intepreter-backend",
-  "version": "0.1.0",
-  "private": true,
+  "name": "chatscript",
+  "author": "disapole",
+  "version": "1.0.0",
+  "description": "客服机器人脚本语言 ChatScript 的解释器",
+  "main": "out/index.js",
+  "types": "out/index.d.ts",
   "scripts": {
     "test": "npx jest --coverage",
     "start": "npx tsx src/server.ts",

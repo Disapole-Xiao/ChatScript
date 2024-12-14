@@ -2,46 +2,89 @@ import { Script, Procedure, Action, ProcId } from './type';
 import { RuntimeError } from './error';
 
 /**
- * 使用解释器需要提供的回调函数
- * @member onSend 在机器人客服有消息要发送给用户时调用
- * @member onExit 可选，在机器人客服主动关闭会话时调用
- * @member onError 可选，在发生错误时调用，默认使用 `console.error`
- * @param userId 可选，机器人客服会在调用上述方法时带上初始传入的 userId。没有传入则为 undefined
+ * 解释器配置接口，定义了解释器运行时需要的回调函数
+ * @interface Config
  */
 export interface Config {
+  /**
+   * 获取变量值的回调函数
+   * @param {string} varname - 变量名
+   * @param {string} [userId] - 用户ID
+   * @returns {any} 变量值，输出时会调用 toString() 方法转化为字符串
+   */
+  getVar?: (varname: string, userId?: string) => any;
+
+  /**
+   * 发送消息的回调函数，在机器人客服有消息要发送给用户时调用
+   * @param {string} message - 要发送的消息
+   * @param {string} [userId] - 用户ID
+   */
   onSend: (message: string, userId?: string) => void;
+
+  /**
+   * 会话结束的回调函数，在机器人客服主动关闭会话时调用
+   * @param {string} [userId] - 用户ID
+   */
   onExit?: (userId?: string) => void;
-  onError?: (error: Error, userId: string) => void;
+
+  /**
+   * 错误处理回调函数，在发生错误时调用，默认使用 console.error
+   * @param {Error} error - 错误对象
+   * @param {string} [userId] - 用户ID
+   */
+  onError?: (error: Error, userId?: string) => void;
 }
 
+/**
+ * DSL解释器类，用于执行对话脚本
+ * @class Interpreter
+ * @implements {Config}
+ */
 export class Interpreter implements Config {
   script: Script;
-  variables: Record<string, any>;
   curProc!: Procedure;
   timers: NodeJS.Timeout[] = [];
   isRunning: boolean = false; // 会话是否正在运行
   userId?: string;
+  getVar: (varname: string, userId?: string) => any;
   onSend: (message: string, userId?: string) => void;
   onExit: (userId?: string) => void;
   onError: (error: Error, userId?: string) => void;
 
-  constructor(script: Script, config: Config, variables: Record<string, any>, userId?: string) {
+  /**
+   * 创建一个新的解释器实例
+   * @param {Script} script - 要执行的脚本
+   * 
+   * @param {Config} config - 配置对象，包含回调函数：
+   * @param {function(string, string=): void} config.onSend - 在机器人客服有消息要发送给用户时调用
+   * @param {function(string=): void} [config.onExit] - 可选，在机器人客服主动关闭会话时调用
+   * @param {function(Error, string=): void} [config.onError] - 可选，在发生错误时调用，默认使用 console.error
+   * @param {function(string, string=): any} [config.getVar] - 可选，在机器人客服需要获取变量时调用
+   * 
+   * @param {string} [userId] - 用户ID，机器人客服会在调用上述方法时带上初始传入的 userId。没有传入则为 undefined
+   */
+  constructor(
+    script: Script,
+    config: Config,
+    userId?: string
+  ) {
     this.script = script;
+    this.getVar = config.getVar || (() => {});
     this.onSend = config.onSend;
     this.onExit = config.onExit || (() => {});
-    this.onError = config.onError || console.error;
-    this.variables = variables;
+    this.onError =config.onError || console.error;
     this.userId = userId;
   }
 
   /**
-   * 开始会话
-   *
+   * 开始执行会话
+   * 
    * 如果对已经结束的会话调用该方法，会重新开始会话。
-   *
    * 如果对正在进行的会话调用该方法，会抛出 RuntimeError
-   *
-   * @param fromProcId 可选，从指定的 Procedure 开始会话。默认从 `entryProcId` 开始
+   * 
+   * @param {ProcId} [fromProcId] - 起始过程ID，默认从 entryProcId 开始
+   * @throws {Error} 当会话已经在运行时
+   * @throws {RuntimeError} 当指定的过程不存在时
    */
   async start(fromProcId: ProcId = this.script.entryProcId) {
     try {
@@ -63,12 +106,13 @@ export class Interpreter implements Config {
   }
 
   /**
-   * 接收用户的消息并执行相应的动作
-   *
+   * 接收并处理用户消息
+   * 
    * 等待用户消息。收到消息后根据消息内容继续执行
-   * 对应 HearEvent 或 DefaultEvent 的时间序列
-   *
-   * @param message 接收到的消息
+   * 对应 HearEvent 或 DefaultEvent 的事件序列
+   * 
+   * @param {string} message - 用户发送的消息
+   * @throws {Error} 当会话未在运行时
    */
   async receive(message: string) {
     try {
@@ -97,21 +141,24 @@ export class Interpreter implements Config {
     }
   }
 
+  /**
+   * 结束当前会话
+   * 清除所有定时器并将运行状态设为false
+   */
   end() {
     this.isRunning = false;
     this.clearTimers();
   }
+
   /**
-   * 执行指定 Procedure
-   *
+   * 执行指定过程
+   * 
    * 如果存在 InitEvent，执行对应事件序列。
-   * 如果 InitEvent 存在 exit 或 goto 语句，
-   * 执行完后结束当前 Procedure。
-   *
-   * 如果存在 SilenceEvents，设置定时器，
-   * 在 `timeout` 秒后执行该 silenceEvent 对应的事件序列
-   *
-   * @param proc 要执行的 Procedure
+   * 如果 InitEvent 存在 exit 或 goto 语句，执行完后结束当前 Procedure。
+   * 如果存在 SilenceEvents，设置定时器，在 timeout 秒后执行该 silenceEvent 对应的事件序列
+   * 
+   * @param {Procedure} proc - 要执行的过程
+   * @private
    */
   private async execProc(proc: Procedure) {
     // 执行 initEvent
@@ -132,12 +179,14 @@ export class Interpreter implements Config {
   }
 
   /**
-   * 执行动作列表（某事件对应的动作）
-   *
+   * 执行动作序列
+   * 
    * 执行完 exitAction 或 gotoAction 后，会立即停止执行后续动作。
-   * gotoAction 会设置 `curProc` 为转移的 Procedure
-   *
-   * @param actions 要执行的动作列表
+   * gotoAction 会设置 curProc 为转移的 Procedure
+   * 
+   * @param {Action[]} actions - 要执行的动作列表
+   * @private
+   * @throws {RuntimeError} 当变量未定义或过程未定义时
    */
   private async execActions(actions: Action[]) {
     try {
@@ -147,11 +196,12 @@ export class Interpreter implements Config {
             let message = '';
             for (const token of action.tokens) {
               if (token.type === 'string') {
-                message += token.content;
+                message += token.content.toString();
               } else {
-                // 如果是变量，在变量集中查找
-                if (this.variables[token.content]) {
-                  message += this.variables[token.content];
+                // 如果是变量，查询值并替换
+                const value = this.getVar(token.content)
+                if (value) {
+                  message += value;
                 } else {
                   throw new RuntimeError(
                     action.lineIdx,
@@ -184,7 +234,8 @@ export class Interpreter implements Config {
   }
 
   /**
-   * 取消所有定时器并将 `timers` 列表清空
+   * 清除所有定时器
+   * @private
    */
   private clearTimers(): void {
     for (const timer of this.timers) {
