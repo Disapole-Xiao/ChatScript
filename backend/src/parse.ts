@@ -1,6 +1,6 @@
 import { Script, Procedure, Action, ProcEvent, ProcId, Token } from './type';
 import { ParseError } from './error';
-import { exampleTexts } from '../examplesTexts';
+import { exampleTexts } from '../data/examplesTexts';
 
 export function parse(script: string): Script {
   let lineIdx: number = 0,

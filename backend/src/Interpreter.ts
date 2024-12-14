@@ -155,7 +155,7 @@ export class Interpreter implements Config {
                 } else {
                   throw new RuntimeError(
                     action.lineIdx,
-                    `Varialble "${token.content}" does not exist`
+                    `Variable "${token.content}" does not exist`
                   );
                 }
               }

@@ -531,7 +531,7 @@ describe('Variable', () => {
     const interpreter = createInterpreter(script); // 没有定义 user
     await interpreter.start();
     expect(onErrorMock).toHaveBeenCalledWith(
-      new RuntimeError(3, 'Varialble "user" does not exist'),
+      new RuntimeError(3, 'Variable "user" does not exist'),
       userId
     );
   });
@@ -555,8 +555,8 @@ describe('Unpropriate Call', () => {
 });
 
 // 外部调用 end 方法，未完成的动作应中止
-describe('External End', ()=>{
-  test('end when running', async ()=>{
+describe('External End', () => {
+  test('end when running', async () => {
     const interpreter = createInterpreter(exampleScript);
     await interpreter.start();
     interpreter.end(); // 结束后不应该有其他动作发生
@@ -564,16 +564,21 @@ describe('External End', ()=>{
     expect(onSendMock).toHaveBeenCalledTimes(1);
     expect(onExitMock).not.toHaveBeenCalled();
     expect(interpreter.isRunning).toBe(false);
-  })
-})
+  });
+});
 
 // 默认 config
-describe('Default Config', ()=>{
-  test('onExit and onError', async ()=>{
-    const interpreter = new Interpreter(exampleScript, {
-      onSend: onSendMock
-    }, {}, userId);
+describe('Default Config', () => {
+  test('onExit and onError', async () => {
+    const interpreter = new Interpreter(
+      exampleScript,
+      {
+        onSend: onSendMock,
+      },
+      {},
+      userId
+    );
     expect(interpreter.onExit).toBeInstanceOf(Function);
     expect(interpreter.onError).toEqual(console.error);
   });
-})
+});

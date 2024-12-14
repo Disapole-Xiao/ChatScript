@@ -1,8 +1,8 @@
 import { parse } from './parse';
 import WebSocket from 'ws';
 import { Interpreter, Config } from './Interpreter';
-import { users } from '../userData';
-import { exampleTexts } from '../examplesTexts';
+import { users } from '../data/userData';
+import { exampleTexts } from '../data/examplesTexts';
 const testNum = 1;
 const text = exampleTexts[testNum];
 
