@@ -1,0 +1,22 @@
+{
+  "name": "demo",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "server": "npx tsx server.ts",
+    "client": "npx tsx client.ts"
+  },
+  "author": "disapole",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "ws": "^8.18.0",
+    "chatscript": "../ChatScript"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5"
+  }
+}

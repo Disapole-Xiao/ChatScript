@@ -1,0 +1,27 @@
+{
+  "name": "chatscript",
+  "author": "disapole",
+  "version": "1.0.0",
+  "description": "客服机器人脚本语言 ChatScript 的解释器",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "npx tsc",
+    "test": "npx jest --coverage",
+    "doc": "npx typedoc --tsconfig tsconfig.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "tsx": "^4.19.2",
+    "typedoc": "^0.27.5",
+    "typescript": "^5"
+  }
+}
